@@ -1,5 +1,46 @@
 # DevPulse Copilot Instructions
 
+## How we work
+
+DevPulse is built by one developer who uses Copilot as an assistant. Copilot helps; the developer designs, reviews, and decides. The developer is also using this project to strengthen their fullstack skills, so keep changes small and readable, and explain non-obvious choices in a sentence or two in your summaries.
+
+There are no fixed phases. Features can be built in any order or in parallel. Every feature follows the same loop:
+
+```text
+intent -> spec -> plan -> MVP slice -> review -> UI/UX pass -> fix -> iterate
+```
+
+### The loop
+
+1. **Intent.** The developer describes what they want in plain words.
+2. **Spec.** The intent becomes one file, `specs/<feature>/spec.md`, with: the intent in the developer's words, goal and scope, non-goals, technical notes (data, API, background jobs, security), scenarios in Given/When/Then form, acceptance criteria, and a short list of open questions and assumptions. Do not create separate files for scenarios, assumptions, coverage, or traceability unless asked. If a request is more than a small change and has no spec, draft one in this format and ask the developer to review it before planning.
+3. **Plan.** Before writing code, write a short plan in the chat: the slices in order (the first slice is the smallest working end-to-end MVP), the modules and files you expect to touch, new dependencies, schema changes, and risks. Then **stop and wait** for the developer.
+4. **MVP slice.** Build one working slice at a time: code, tests, and any migration together. Rough is fine; working end to end is required.
+5. **Review.** After each slice, **stop and wait**. Give a summary: what changed, how to run it, how to test it, anything that differs from the spec or plan, and open questions.
+6. **UI/UX pass, fix, iterate.** The developer reviews, asks for UI/UX improvements and fixes, and the next slice or iteration starts only when they say so.
+
+A question or comment from the developer is a question, not permission to continue to the next slice. Answer it, then wait.
+
+### A slice is done when
+
+- The happy path works end to end.
+- Its tests and the existing tests pass.
+- No secret appears in logs or responses.
+- Any migration applies cleanly.
+- New pages have loading, empty, and error states. Visual polish can wait for the UI/UX pass.
+
+### Ask before you
+
+- Add a dependency.
+- Change the architecture or the layer rules.
+- Increase GitHub permissions.
+- Change how credentials are stored.
+- Change an API or database contract agreed in the spec.
+- Add scope that the spec does not mention.
+- Delete or rewrite files outside the feature you are working on.
+
+If the spec is ambiguous, ask a short question instead of guessing. If the code, a request, or these instructions conflict with the spec, say so and ask. Anything the spec lists as a non-goal must not be implemented, stubbed, or exposed in the UI.
+
 ## Product context
 
 DevPulse is a personal engineering intelligence dashboard that transforms authorized GitHub data into visual insights about development activity, technologies, pull requests, reviews, repositories, and CI/CD reliability.
@@ -44,7 +85,7 @@ Use neutral, evidence-based language. Do not infer productivity or skill from co
 - Redis
 - Celery Beat or an approved scheduler
 
-Celery, Redis, and the scheduler are part of the approved stack but are **introduced only in the phase whose approved spec includes them**. Do not add, configure, or reference them in code, Docker Compose, or dependencies before that phase.
+Introduce Celery, Redis, and the scheduler when a feature needs background or scheduled work, add them through Docker Compose, and mention them in the plan.
 
 ### Runtime and delivery
 
@@ -54,7 +95,7 @@ Celery, Redis, and the scheduler are part of the approved stack but are **introd
 - Structured logging
 - OpenTelemetry-compatible observability
 
-Do not introduce Kubernetes, Kafka, microservices, event sourcing, a separate database per module, or a new application framework without explicit approval.
+Do not introduce Kubernetes, Kafka, microservices, event sourcing, a separate database per module, or a new application framework without asking first.
 
 ## Architecture
 
@@ -183,7 +224,7 @@ Feature router -> another feature's repository
 
 ## Data-flow rule
 
-The target data flow for GitHub-derived dashboard data is shown below. It is delivered in stages: the connection foundation first, then manual synchronization, and Celery-driven scheduled synchronization in a later phase. Do not build a later stage early.
+GitHub-derived dashboard data always flows through the database:
 
 ```text
 GitHub
@@ -195,7 +236,9 @@ GitHub
             -> React widgets and charts
 ```
 
-PostgreSQL is the DevPulse system of record for profile, connection, synchronization, and analytics data. React must not call GitHub directly for dashboard information. Dashboard APIs must read normalized or aggregated data from PostgreSQL.
+PostgreSQL is the DevPulse system of record for profile, connection, synchronization, and analytics data. React must not call GitHub directly for dashboard information. Dashboard APIs must read normalized or aggregated data from PostgreSQL, never fetch from GitHub on each request.
+
+A feature may start with a simpler way to fetch data (for example a manual trigger) while building the MVP, as long as the data still goes through the service, repository, and database.
 
 ## Authentication and authorization
 
@@ -206,19 +249,21 @@ PostgreSQL is the DevPulse system of record for profile, connection, synchroniza
 - Create a secure DevPulse session after successful GitHub user authorization.
 - Prefer opaque server-side sessions backed by PostgreSQL.
 - Store only a hash of each session credential.
-- Use HTTP-only cookies; production cookies must be Secure and use an approved SameSite policy.
+- Use HTTP-only cookies; production cookies must be Secure and use a SameSite policy chosen in the spec or plan.
 - Validate short-lived, single-use OAuth state.
 - Enforce server-side ownership for users, connections, installations, repositories, jobs, and analytics data.
 - Request minimum GitHub permissions.
 
 ## Credential and secret rules
 
+These rules are always on, even for an MVP. This file is the single source of truth for authentication, session, and credential rules. Path-specific instruction files may apply these rules but must not weaken them.
+
 - Never return GitHub tokens to React.
 - Never store credentials in `localStorage` or `sessionStorage`.
 - Never place credentials in URLs, query parameters, logs, error responses, or Celery task arguments.
 - Keep the GitHub App private key, client secret, webhook secret, and encryption keys outside normal PostgreSQL application tables.
 - Generate short-lived installation access tokens when required; do not treat them as permanent credentials.
-- Persist a user or refresh token only when an approved feature requires it.
+- Persist a user or refresh token only when the spec explicitly requires it.
 - Encrypt required persisted tokens at application level with keys stored outside PostgreSQL.
 - Redact authorization headers, cookies, tokens, and secrets from logs.
 
@@ -230,75 +275,19 @@ PostgreSQL is the DevPulse system of record for profile, connection, synchroniza
 - Use stable GitHub object IDs and database uniqueness constraints where available.
 - Make imports and callbacks idempotent.
 - Do not expose ORM models directly as API responses.
-- Do not create every planned table in the first implementation slice.
+- Create only the tables the current slice needs.
 
-## Testing and TDD
+## Testing
 
-Use TDD only after requirements and implementation plans are approved:
+Write tests together with the code, in the same slice. Strict test-first is not required, but a slice without tests for its important behavior is not done.
 
-1. Write a failing test.
-2. Run it and confirm the expected failure.
-3. Add the minimum implementation.
-4. Run relevant tests.
-5. Refactor without changing behavior.
-6. Run regression tests.
-7. Update traceability.
+Cover what matters for the slice:
 
-Use appropriate test levels:
+- Business rules and ownership in services
+- Database behavior that depends on PostgreSQL (constraints, upserts, transactions)
+- API behavior: validation, authentication, ownership, safe errors
+- GitHub client behavior using fixtures or mocks
+- Background tasks: duplicate delivery, retries, and failure handling
+- Key UI behavior with React Testing Library, and a few key journeys with Playwright
 
-- Service unit tests
-- Repository integration tests against PostgreSQL
-- PostgreSQL constraint tests
-- FastAPI integration tests
-- GitHub client contract tests using fixtures or mocks
-- Celery task and scheduler tests
-- React component tests
-- Security tests
-- Playwright end-to-end tests
-
-Do not call live GitHub APIs from unit tests. Never place real credentials in fixtures.
-
-## Phase boundaries and source of truth
-
-- Approved specifications under `specs/` are the source of truth for scope. Work only inside the current approved phase.
-- Each phase prompt defines that phase's scope and non-goals. Anything listed as a non-goal must not be implemented, stubbed, or exposed in the UI.
-- If existing code, a request, or these instructions conflict with an approved spec, stop and report the conflict instead of choosing silently.
-- This file is the single source of truth for authentication, session, and credential rules. Path-specific instruction files may apply these rules but must not weaken or contradict them.
-
-## Controlled delivery workflow
-
-For every new feature:
-
-1. Receive intent.
-2. Generate `spec.md`, BDD feature files, assumptions, open questions, and coverage.
-3. Stop at `AWAITING_REQUIREMENTS_APPROVAL`.
-4. Continue only after the exact approval command defined by the feature prompt.
-5. Generate design decisions, software design, TDD plan, implementation plan, risks, and traceability.
-6. Stop at `AWAITING_IMPLEMENTATION_APPROVAL`.
-7. Continue only after the exact implementation approval command.
-8. Implement one approved vertical slice at a time using TDD.
-9. After each slice, stop at `AWAITING_SLICE_REVIEW`. Do not start the next slice until the human explicitly approves it.
-
-A slice is complete only when:
-
-- Its tests and all existing tests pass
-- Requirement and BDD traceability is updated
-- No secret appears in logs or responses
-- Migrations apply and roll back, when applicable
-- Relevant frontend states are covered
-- The implementation matches the approved design
-
-Ordinary comments, questions, or review feedback are not approval.
-
-Do not silently:
-
-- Expand scope
-- Add dependencies
-- Change architecture
-- Increase GitHub permissions
-- Change credential storage
-- Change approved API or database contracts
-- Implement a later phase
-- Ignore failing tests or security checks
-
-If implementation requires an unapproved deviation, stop and report `IMPLEMENTATION_DEVIATION_REQUIRES_APPROVAL`.
+Use the scenarios in the spec as the source for test names and cases. Do not call live GitHub APIs from tests. Never place real credentials in fixtures.
