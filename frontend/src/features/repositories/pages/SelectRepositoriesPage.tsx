@@ -79,7 +79,17 @@ export default function SelectRepositoriesPage() {
   const removed = changeCount - added;
 
   return (
-    <SetupLayout crumb="Setup" action={<LogoutButton className="btn btn-ghost" />}>
+    <SetupLayout
+      crumb="Setup"
+      action={
+        <div className="setup-actions">
+          <Link to="/dashboard" className="btn btn-ghost">
+            Back to dashboard
+          </Link>
+          <LogoutButton className="btn btn-ghost" />
+        </div>
+      }
+    >
       {state.status === "loading" && <LoadingState label="Loading your repositories…" />}
       {state.status === "error" && (
         <ErrorState
@@ -216,8 +226,8 @@ export default function SelectRepositoriesPage() {
                         ? "Save selection"
                         : `Save selection (${changeCount} ${changeCount === 1 ? "change" : "changes"})`}
                   </button>
-                  <Link className="btn btn-secondary" to="/connect">
-                    Back
+                  <Link className="btn btn-secondary" to="/dashboard">
+                    Back to dashboard
                   </Link>
                 </div>
               </>

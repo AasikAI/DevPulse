@@ -1,4 +1,4 @@
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import LogoutButton from "../../auth/components/LogoutButton";
 import ErrorState from "../../../shared/components/ErrorState";
 import LoadingState from "../../../shared/components/LoadingState";
@@ -11,9 +11,23 @@ export default function ConnectGitHubPage() {
   const { state, reload, gaveUp } = useConnection();
   const [params] = useSearchParams();
   const errorMessage = connectErrorMessage(params.get("error"));
+  // Someone with a connection already has a dashboard to go back to.
+  const hasConnection = state.status === "ready" && state.connection.status !== "not_connected";
 
   return (
-    <SetupLayout crumb="Setup" action={<LogoutButton className="btn btn-ghost" />}>
+    <SetupLayout
+      crumb="Setup"
+      action={
+        <div className="setup-actions">
+          {hasConnection && (
+            <Link to="/dashboard" className="btn btn-ghost">
+              Back to dashboard
+            </Link>
+          )}
+          <LogoutButton className="btn btn-ghost" />
+        </div>
+      }
+    >
       {state.status === "loading" && <LoadingState label="Checking your GitHub connection…" />}
       {state.status === "error" && (
         <ErrorState

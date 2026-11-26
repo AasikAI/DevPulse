@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import update
+from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -70,3 +70,17 @@ class SyncRunRepository:
             .values(status=status, error_category=error_category, finished_at=now)
         )
         await self._db.commit()
+
+    async def latest_finished_status(self, *, connection_id: uuid.UUID, kind: str) -> str | None:
+        """Status of the most recent run of this kind that has ended (not one still running)."""
+        result = await self._db.execute(
+            select(SyncRun.status)
+            .where(
+                SyncRun.connection_id == connection_id,
+                SyncRun.kind == kind,
+                SyncRun.status != "running",
+            )
+            .order_by(SyncRun.started_at.desc())
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
