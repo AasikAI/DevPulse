@@ -1,4 +1,5 @@
 import uuid
+from dataclasses import dataclass
 from datetime import datetime
 
 from sqlalchemy import delete, select, update
@@ -6,6 +7,12 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.identity.models import OAuthState, User, UserSession
+
+
+@dataclass(frozen=True)
+class ConsumedState:
+    nonce_hash: str
+    user_id: uuid.UUID | None
 
 
 class IdentityRepository:
@@ -37,8 +44,8 @@ class IdentityRepository:
 
     async def consume_oauth_state(
         self, *, state_hash: str, purpose: str, now: datetime
-    ) -> str | None:
-        """Mark a valid state as used and return its nonce hash.
+    ) -> ConsumedState | None:
+        """Mark a valid state as used and return what it was bound to.
 
         A single UPDATE makes this atomic: of two concurrent callbacks with the
         same state, only one matches the `consumed_at IS NULL` condition.
@@ -52,9 +59,10 @@ class IdentityRepository:
                 OAuthState.expires_at > now,
             )
             .values(consumed_at=now)
-            .returning(OAuthState.nonce_hash)
+            .returning(OAuthState.nonce_hash, OAuthState.user_id)
         )
-        return result.scalar_one_or_none()
+        row = result.one_or_none()
+        return None if row is None else ConsumedState(nonce_hash=row[0], user_id=row[1])
 
     async def purge_oauth_states_expired_before(self, cutoff: datetime) -> None:
         await self._db.execute(delete(OAuthState).where(OAuthState.expires_at < cutoff))

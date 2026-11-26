@@ -1,6 +1,6 @@
 # Plan: GitHub connection and scheduled data sync
 
-**Status:** Reviewed 2026-11-26. Slice 1 built and waiting for your review; slices 2 to 6 not started.
+**Status:** Reviewed 2026-11-26. Slices 1 and 2 built and waiting for your review; slices 3 to 6 not started.
 **Spec:** [spec.md](./spec.md)
 **Date:** 2026-11-25
 
@@ -254,6 +254,15 @@ Each slice is a vertical, working step: code, tests, and migration together, the
 - Infra: compose `redis` and `worker`; `.env`: `REDIS_URL`, private key mount.
 - Frontend: `ConnectGitHubPage` (not connected, connected, needs-attention, loading, error), post-sign-in routing (`/start`: no connection to `/connect`).
 - Tests: scenario "I connect my GitHub account" (belongs to me only); installation owned by someone else rejected; reused or invalid install state; duplicate callback creates no duplicate rows; repository upsert idempotency and pagination (fixtures); task receives only `connection_id`; installation `404` marks `needs_attention`; no tokens in logs or responses.
+- **Built (2026-11-26), where it differs from the text above:**
+  - After a successful install the callback redirects to `/connect` (not `/repositories`, which arrives in slice 3). Slice 3 changes that one redirect.
+  - `/start` now always redirects to `/connect`; slice 5 will send connected users to the dashboard instead.
+  - No Celery result backend: job state lives in `sync_runs`, so Redis is broker only.
+  - Retry delay uses half-fixed plus half-random jitter (45 s, 90 s, ... capped at 15 min) so a retry never fires immediately.
+  - `sync_runs` and `github_connections` got only the columns slice 2 needs; the rest arrive with slice 4.
+  - GitHub's "Redirect on update" sends no `state`. That case is accepted only for an installation that is already the user's own connection (it just refreshes the repository list). **Not yet checked against a real GitHub installation.**
+  - Worker logs go through the same JSON and redaction setup as the API.
+  - `app/AppShell.tsx` (sidebar layout from slice 1) is unused until the dashboard slice.
 
 ### Slice 3: Repository selection
 

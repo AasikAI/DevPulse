@@ -1,6 +1,5 @@
 import logging
 from collections.abc import Callable
-from urllib.parse import parse_qs, urlparse
 
 import httpx
 from sqlalchemy import text
@@ -12,25 +11,9 @@ from app.github_integration.dependencies import get_github_client
 from app.main import app
 from tests.conftest import ORIGIN
 from tests.fake_github import FAKE_USER_TOKEN, GOOD_CODE, FakeGitHub
+from tests.helpers import scalar, sign_in, start_sign_in
 
 Browser = Callable[[], httpx.AsyncClient]
-
-
-async def start_sign_in(client: httpx.AsyncClient) -> str:
-    """Click 'Continue with GitHub'; returns the state GitHub would echo back."""
-    response = await client.get("/api/auth/github/login")
-    assert response.status_code == 302
-    return parse_qs(urlparse(response.headers["location"]).query)["state"][0]
-
-
-async def sign_in(client: httpx.AsyncClient, code: str = GOOD_CODE) -> httpx.Response:
-    state = await start_sign_in(client)
-    return await client.get("/api/auth/github/callback", params={"code": code, "state": state})
-
-
-async def scalar(sql: str):
-    async with SessionLocal() as session:
-        return (await session.execute(text(sql))).scalar_one()
 
 
 # --- Scenario: A new user signs in with GitHub -----------------------------

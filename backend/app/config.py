@@ -21,6 +21,14 @@ class Settings(BaseSettings):
     github_app_client_id: str = ""
     github_app_client_secret: SecretStr = SecretStr("")
 
+    # Needed from slice 2 on: connecting and reading data as the installed App.
+    # The private key stays in a file outside the database and the repo.
+    github_app_id: str = ""
+    github_app_slug: str = ""
+    github_app_private_key_path: str = ""
+
+    redis_url: str = "redis://localhost:6379/0"
+
     session_lifetime_days: int = 14
     oauth_state_ttl_minutes: int = 10
 

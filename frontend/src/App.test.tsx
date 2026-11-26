@@ -4,7 +4,7 @@ import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it } from "vitest";
 import App from "./App";
 import { AuthProvider } from "./features/auth/hooks/AuthProvider";
-import { aliceUser, stubApi } from "./test/stubApi";
+import { aliceUser, notConnected, stubApi } from "./test/stubApi";
 
 function renderApp(path: string) {
   return render(
@@ -16,8 +16,13 @@ function renderApp(path: string) {
   );
 }
 
+const CONNECT_HEADING = "Your next insight starts here.";
+
 const signedOut = { "GET /api/auth/me": { status: 401, body: { code: "not_authenticated" } } };
-const signedIn = { "GET /api/auth/me": { status: 200, body: aliceUser } };
+const signedIn = {
+  "GET /api/auth/me": { status: 200, body: aliceUser },
+  "GET /api/github/connection": { status: 200, body: notConnected },
+};
 
 describe("sign-in page", () => {
   it("offers Continue with GitHub, which starts the backend sign-in", async () => {
@@ -74,11 +79,11 @@ describe("sign-in page", () => {
     expect(await screen.findByRole("heading", { name: "Sign in to DevPulse" })).toBeInTheDocument();
   });
 
-  it("sends an already signed-in user to the start page", async () => {
+  it("sends an already signed-in user without a connection to the connect page", async () => {
     stubApi(signedIn);
     renderApp("/sign-in");
 
-    expect(await screen.findByRole("heading", { name: "You are signed in" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: CONNECT_HEADING })).toBeInTheDocument();
   });
 });
 
@@ -93,18 +98,19 @@ describe("protected pages", () => {
   it("restores the session after a browser refresh", async () => {
     const { calls } = stubApi(signedIn);
     const first = renderApp("/start");
-    expect(await screen.findByText(/Welcome, Alice Example/)).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: CONNECT_HEADING })).toBeInTheDocument();
     first.unmount();
 
     renderApp("/start");
 
-    expect(await screen.findByText(/Welcome, Alice Example/)).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: CONNECT_HEADING })).toBeInTheDocument();
     expect(calls.filter((c) => c === "GET /api/auth/me")).toHaveLength(2);
   });
 
   it("shows an error with a retry when the session check fails", async () => {
     let attempts = 0;
     stubApi({
+      ...signedIn,
       "GET /api/auth/me": () => (++attempts === 1 ? { status: 500 } : { status: 200, body: aliceUser }),
     });
     renderApp("/start");
@@ -112,17 +118,17 @@ describe("protected pages", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("DevPulse is unavailable");
     await userEvent.click(screen.getByRole("button", { name: "Try again" }));
 
-    expect(await screen.findByText(/Welcome, Alice Example/)).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: CONNECT_HEADING })).toBeInTheDocument();
   });
 
   it("keeps credentials out of the page and out of browser storage", async () => {
     stubApi(signedIn);
     renderApp("/start");
-    await screen.findByText(/Welcome, Alice Example/);
+    await screen.findByRole("heading", { name: CONNECT_HEADING });
 
     expect(localStorage).toHaveLength(0);
     expect(sessionStorage).toHaveLength(0);
-    expect(document.body.textContent).not.toMatch(/token|secret|devpulse_session/i);
+    expect(document.body.textContent).not.toMatch(/ghu_|ghs_|ghp_|bearer|devpulse_session/i);
   });
 });
 
@@ -156,7 +162,7 @@ describe("logging out", () => {
     await userEvent.click(await screen.findByRole("button", { name: "Log out" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Could not log out");
-    expect(screen.getByText(/Welcome, Alice Example/)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: CONNECT_HEADING })).toBeInTheDocument();
   });
 });
 

@@ -13,6 +13,7 @@ from app.common.middleware import OriginCheckMiddleware, RequestContextMiddlewar
 from app.config import get_settings
 from app.db import get_db
 from app.github_integration.client import GitHubClient
+from app.github_integration.router import router as github_router
 from app.identity.router import router as identity_router
 
 settings = get_settings()
@@ -26,6 +27,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             client_id=settings.github_app_client_id,
             client_secret=settings.github_app_client_secret.get_secret_value(),
             http=http,
+            app_id=settings.github_app_id,
+            app_slug=settings.github_app_slug,
+            private_key_path=settings.github_app_private_key_path,
         )
         yield
 
@@ -47,6 +51,7 @@ async def handle_app_error(_: Request, exc: AppError) -> JSONResponse:
 
 
 app.include_router(identity_router, prefix="/api")
+app.include_router(github_router, prefix="/api")
 
 
 @app.get("/health")

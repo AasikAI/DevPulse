@@ -1,6 +1,7 @@
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+import uuid
 
 from app.common.clock import utcnow
 from app.common.errors import NotAuthenticatedError, NotConfiguredError
@@ -16,9 +17,15 @@ SIGN_IN_PURPOSE = "sign_in"
 
 
 @dataclass(frozen=True)
+class IssuedState:
+    state: str
+    # Goes into a cookie so the callback must come from the same browser.
+    nonce: str
+
+
+@dataclass(frozen=True)
 class SignInStart:
     authorize_url: str
-    # Goes into a cookie so the callback must come from the same browser.
     nonce: str
 
 
@@ -47,10 +54,10 @@ class IdentityService:
     def _callback_url(self) -> str:
         return f"{self._settings.frontend_origin}/api/auth/github/callback"
 
-    async def start_sign_in(self) -> SignInStart:
-        if not self._github.is_configured:
-            raise NotConfiguredError()
-
+    async def issue_oauth_state(
+        self, *, purpose: str, user_id: uuid.UUID | None = None
+    ) -> IssuedState:
+        """Create a short-lived, single-use state (and the cookie nonce that pairs with it)."""
         now = self._clock()
         state = new_token()
         nonce = new_token()
@@ -58,12 +65,41 @@ class IdentityService:
         await self._repository.create_oauth_state(
             state_hash=hash_token(state),
             nonce_hash=hash_token(nonce),
-            purpose=SIGN_IN_PURPOSE,
+            purpose=purpose,
+            user_id=user_id,
             expires_at=now + timedelta(minutes=self._settings.oauth_state_ttl_minutes),
         )
         await self._repository.commit()
-        url = self._github.authorize_url(state=state, redirect_uri=self._callback_url)
-        return SignInStart(authorize_url=url, nonce=nonce)
+        return IssuedState(state=state, nonce=nonce)
+
+    async def consume_oauth_state(
+        self,
+        *,
+        purpose: str,
+        state: str | None,
+        nonce: str | None,
+        expected_user_id: uuid.UUID | None = None,
+    ) -> bool:
+        """True only for an unused, unexpired state from the browser that started it.
+
+        The state is spent even when a later check fails, so it can never be replayed.
+        """
+        if not state or not nonce:
+            return False
+        consumed = await self._repository.consume_oauth_state(
+            state_hash=hash_token(state), purpose=purpose, now=self._clock()
+        )
+        await self._repository.commit()
+        if consumed is None or not tokens_match(consumed.nonce_hash, hash_token(nonce)):
+            return False
+        return expected_user_id is None or consumed.user_id == expected_user_id
+
+    async def start_sign_in(self) -> SignInStart:
+        if not self._github.is_configured:
+            raise NotConfiguredError()
+        issued = await self.issue_oauth_state(purpose=SIGN_IN_PURPOSE)
+        url = self._github.authorize_url(state=issued.state, redirect_uri=self._callback_url)
+        return SignInStart(authorize_url=url, nonce=issued.nonce)
 
     async def complete_sign_in(
         self,
@@ -73,18 +109,12 @@ class IdentityService:
         nonce: str | None,
         previous_session_token: str | None,
     ) -> SignInResult:
-        if not code or not state or not nonce:
+        if not code or not await self.consume_oauth_state(
+            purpose=SIGN_IN_PURPOSE, state=state, nonce=nonce
+        ):
             raise InvalidSignInStateError()
 
         now = self._clock()
-        # The state is spent even if a later step fails, so it can never be replayed.
-        nonce_hash = await self._repository.consume_oauth_state(
-            state_hash=hash_token(state), purpose=SIGN_IN_PURPOSE, now=now
-        )
-        await self._repository.commit()
-        if nonce_hash is None or not tokens_match(nonce_hash, hash_token(nonce)):
-            raise InvalidSignInStateError()
-
         # The GitHub user token lives only inside this block and is never stored.
         try:
             user_token = await self._github.exchange_code(

@@ -1,10 +1,16 @@
-import { Navigate, useSearchParams } from "react-router-dom";
+import { Link, Navigate, useSearchParams } from "react-router-dom";
 import ErrorState from "../../../shared/components/ErrorState";
 import LoadingState from "../../../shared/components/LoadingState";
+import SetupLayout from "../../../shared/components/SetupLayout";
 import { SIGN_IN_URL } from "../api/authApi";
-import SetupLayout from "../components/SetupLayout";
 import { useAuth } from "../hooks/useAuth";
 import { signInErrorMessage } from "../utils/signInErrors";
+
+const backHome = (
+  <Link to="/" className="btn btn-ghost">
+    Back to home
+  </Link>
+);
 
 export default function SignInPage() {
   const { state, reload } = useAuth();
@@ -15,7 +21,7 @@ export default function SignInPage() {
 
   if (state.status === "loading") {
     return (
-      <SetupLayout>
+      <SetupLayout crumb="Sign in" action={backHome}>
         <LoadingState label="Checking your session…" />
       </SetupLayout>
     );
@@ -23,7 +29,7 @@ export default function SignInPage() {
 
   if (state.status === "error") {
     return (
-      <SetupLayout>
+      <SetupLayout crumb="Sign in" action={backHome}>
         <ErrorState
           title="DevPulse is unavailable"
           message="We could not reach DevPulse. Please try again."
@@ -34,7 +40,7 @@ export default function SignInPage() {
   }
 
   return (
-    <SetupLayout>
+    <SetupLayout crumb="Sign in" action={backHome}>
       <div className="setup-grid">
         <section className="setup-intro">
           <h2>A clearer view of your engineering.</h2>
