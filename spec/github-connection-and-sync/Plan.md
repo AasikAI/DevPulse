@@ -1,6 +1,6 @@
 # Plan: GitHub connection and scheduled data sync
 
-**Status:** Reviewed 2026-11-26. Slices 1 to 4 built and waiting for your review; slices 5 and 6 not started.
+**Status:** Reviewed 2026-11-26. Slices 1 to 5 built and waiting for your review; slice 6 not started.
 **Spec:** [spec.md](./spec.md)
 **Date:** 2026-11-25
 
@@ -154,7 +154,7 @@ Recovery for `needs_attention` in the MVP: the user fixes it on GitHub and goes 
 
 ### 3.8 Widget time grouping
 
-- Weekly buckets, **UTC, Monday start** (`date_trunc('week', ...)`), default window **12 weeks** (`?weeks=` 1 to 52).
+- Weekly buckets, **UTC, Monday start** (`date_trunc('week', ...)`), default window **12 weeks**, selectable as **4, 12, 26 or 52 weeks** (`?weeks=` 1 to 52 is accepted by the API).
 - Per week: pull requests **opened** (by `created_at`) and **merged** (by `merged_at`). Pull requests by bots are included; draft pull requests count as open.
 - Summary numbers: open now, opened in the window, merged in the window, and open PRs by review state (including "not loaded yet" while the review pass is catching up).
 - All calculated in SQL in the backend. React only draws. The widget states its scope ("N selected repositories, last 12 weeks, UTC") and uses neutral wording, with no productivity or comparison language.
@@ -316,9 +316,27 @@ Each slice is a vertical, working step: code, tests, and migration together, the
 
 **Result:** The dashboard shows the pull request widget from the database, with a "last updated" time, and guides the user when there is nothing to show. Post-sign-in routing is complete (connection to `/dashboard`).
 
+**Decisions for this slice (2026-11-26):**
+
+- **Time window selector now:** the dashboard has a selector with **4, 12, 26 and 52 weeks** (default 12), which sets `?weeks=` on the summary endpoint. The chosen window and "UTC" are shown with the chart.
+- **Chart:** grouped bars per week, **opened** and **merged** side by side (ECharts), with a text table of the same numbers as the accessible alternative. The current week is marked "in progress".
+- **Navigation:** the dashboard uses the sidebar layout from mockup 07 with **Overview**, **Repositories** (the selection page) and **GitHub connection** (the connect page), plus a small status block (connection state, repository count, last updated). The selection and connect pages get a **Back to dashboard** button once the user has a connection.
+- **Problems are shown on the dashboard, not by redirecting:** when the connection needs attention or the data is out of date, a warning banner sits above the data (which stays visible) with a link to fix it.
+- **Updates while the first import runs:** the dashboard re-checks every 30 seconds while data is incomplete (importing history, or nothing yet) for up to 5 minutes, then stops and shows a "reload" prompt. No manual "refresh now" button (Later).
+- **No per-repository breakdown:** totals across the selected repositories only. The widget states its scope ("N selected repositories, last 12 weeks, UTC") and uses neutral wording.
+- **Routing after sign-in:** no connection goes to `/connect`; a connection (including one that needs attention, or with nothing selected) goes to `/dashboard`, which shows the matching prompt.
+
 - Backend: summary endpoint, SQL aggregation, freshness fields (3.9).
 - Frontend: install `echarts`; `DashboardPage`, `PullRequestWidget` with chart and text table, "last updated (UTC)", states: loading, no connection (prompt), nothing selected (prompt), empty (selected, no PRs yet), importing history (partial), out of date (stale banner), needs attention, error with retry.
 - Tests: scenarios "dashboard guides me", "widget reads from the database" (verified: no GitHub client is called in the request path), "I only see my own data", stale marking, unselected repositories excluded and returning on reselect; frontend state tests and "no credentials in rendered content or browser storage".
+- **Built (2026-11-26), where it differs from the text above:**
+  - The summary endpoint (`GET /api/pull-requests/summary?weeks=N`) also returns the connection state (`not_connected`, `active`, `needs_attention`), so the dashboard needs one call to decide between the connect prompt, the select prompt and the data. A user without a connection gets a normal 200, not an error.
+  - "Out of date" = the most recent finished pull request run **failed or was rate limited** (marked at once), or the last update is older than **3 x `SYNC_INTERVAL_SECONDS`** (45 minutes by default). A partial run is not a failure. Read through a small read-only `SyncStatusService` so the dashboard never touches the synchronization tables directly.
+  - `history_complete` is true when nothing is selected (there is nothing to wait for).
+  - The sidebar status block shows connection state and the number of repositories the App can access (from the existing connection endpoint). The last-updated time is shown on the page itself instead.
+  - The chart library is a separate lazy-loaded chunk (about 507 kB, 171 kB compressed); the main bundle stays at about 300 kB. Vite warns about the chunk size; I left the warning as is.
+  - The chart is replaced by a stand-in in the unit tests (the test environment has no canvas). It was checked visually in a real browser against a mock API instead.
+  - The setup pages (connect, repositories) have a "Back to dashboard" button; on the connect page it only appears once there is a connection.
 
 ### Slice 6: Hardening and acceptance
 

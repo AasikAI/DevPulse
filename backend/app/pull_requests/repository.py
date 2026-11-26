@@ -1,12 +1,17 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 
-from sqlalchemy import case, or_, select, update
+from sqlalchemy import Date, case, cast, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.github_integration.schemas import GitHubPullRequestInfo
 from app.pull_requests.models import PullRequest
+
+
+def _utc_week(column) -> object:
+    """The Monday (UTC) of the week a timestamp falls in."""
+    return cast(func.date_trunc("week", func.timezone("UTC", column)), Date)
 
 
 class PullRequestRepository:
@@ -99,3 +104,46 @@ class PullRequestRepository:
 
     async def commit(self) -> None:
         await self._db.commit()
+
+    # --- Reads for the dashboard ---------------------------------------------------------------
+    # Every query is limited to the repository IDs it is given, which the caller took
+    # from the signed-in user's own selected repositories.
+
+    async def weekly_counts(
+        self, *, repository_ids: list[uuid.UUID], since: datetime
+    ) -> tuple[dict[date, int], dict[date, int]]:
+        """Pull requests opened and merged per UTC week, from `since` on."""
+        if not repository_ids:
+            return {}, {}
+        opened_week = _utc_week(PullRequest.created_at_gh)
+        opened = await self._db.execute(
+            select(opened_week, func.count())
+            .where(
+                PullRequest.repository_id.in_(repository_ids),
+                PullRequest.created_at_gh >= since,
+            )
+            .group_by(opened_week)
+        )
+        merged_week = _utc_week(PullRequest.merged_at)
+        merged = await self._db.execute(
+            select(merged_week, func.count())
+            .where(
+                PullRequest.repository_id.in_(repository_ids),
+                PullRequest.merged_at.is_not(None),
+                PullRequest.merged_at >= since,
+            )
+            .group_by(merged_week)
+        )
+        return dict(opened.all()), dict(merged.all())
+
+    async def open_by_review_state(self, *, repository_ids: list[uuid.UUID]) -> dict[str, int]:
+        """Open pull requests (drafts included) grouped by review state."""
+        if not repository_ids:
+            return {}
+        state = func.coalesce(PullRequest.review_state, "not_loaded")
+        result = await self._db.execute(
+            select(state, func.count())
+            .where(PullRequest.repository_id.in_(repository_ids), PullRequest.state == "open")
+            .group_by(state)
+        )
+        return dict(result.all())

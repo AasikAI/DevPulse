@@ -240,6 +240,237 @@ a.lp-btn {
   max-width: 640px;
 }
 
+/* ---------- Sidebar navigation and status (mockup 07) ---------- */
+
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.nav a {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 var(--space-2);
+  border-radius: 8px;
+  color: #fff;
+  text-decoration: none;
+}
+
+.nav a:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.nav a[aria-current="page"] {
+  background: var(--color-accent);
+  font-weight: 600;
+}
+
+.sidebar-status {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: var(--space-1);
+  font-size: var(--text-caption);
+  color: var(--color-nav-muted);
+}
+
+.sidebar-status strong {
+  font-size: var(--text-body);
+  color: #fff;
+}
+
+.topbar {
+  justify-content: space-between;
+}
+
+/* ---------- Dashboard (mockup 07) ---------- */
+
+.page-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.field-inline {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--color-muted);
+}
+
+.select {
+  min-height: 44px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  color: var(--color-ink);
+  font: inherit;
+  font-weight: 600;
+}
+
+.select:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: 0;
+}
+
+.banner .btn {
+  margin-left: auto;
+}
+
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: var(--space-3);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+}
+
+.kpi-label {
+  color: var(--color-muted);
+}
+
+.kpi-value {
+  font-size: 36px;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+
+.kpi-caption {
+  font-size: var(--text-caption);
+  color: var(--color-muted);
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: var(--space-2);
+  align-items: start;
+}
+
+.content .dashboard-grid .card,
+.content .prompt {
+  max-width: none;
+}
+
+.widget-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-1);
+  margin-bottom: var(--space-2);
+}
+
+.widget-head h2 {
+  margin-bottom: 0;
+}
+
+.widget-scope {
+  font-size: var(--text-caption);
+}
+
+.chart-canvas {
+  width: 100%;
+  height: 320px;
+}
+
+.chart-loading {
+  display: grid;
+  place-items: center;
+  color: var(--color-muted);
+}
+
+.widget-empty {
+  padding: var(--space-4) 0;
+}
+
+.chart-table {
+  margin-top: var(--space-2);
+}
+
+.chart-table summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  color: var(--color-accent);
+  font-weight: 600;
+}
+
+.chart-table table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: var(--space-1);
+}
+
+.chart-table th,
+.chart-table td {
+  padding: var(--space-1) var(--space-2);
+  text-align: left;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.chart-table thead th {
+  background: var(--color-bg);
+  font-size: var(--text-caption);
+  color: var(--color-muted);
+}
+
+.chart-table tbody th {
+  font-weight: 400;
+}
+
+.review-list {
+  margin: 0;
+}
+
+.review-row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-1) 0;
+  border-top: 1px solid var(--color-border);
+}
+
+.review-row dt {
+  color: var(--color-muted);
+}
+
+.review-row dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+.prompt {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-4);
+}
+
+.prompt h2 {
+  margin-bottom: 0;
+}
+
+.footnote {
+  font-size: var(--text-caption);
+  color: var(--color-muted);
+}
+
 /* ---------- Sign-in / setup layout (mockup 03) ---------- */
 
 .setup {
@@ -260,6 +491,17 @@ a.lp-btn {
 
 .setup-header .btn {
   justify-self: end;
+}
+
+.setup-actions {
+  justify-self: end;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.setup-actions .btn {
+  justify-self: auto;
 }
 
 .setup-crumb {
@@ -496,6 +738,14 @@ a.lp-btn {
 /* ---------- Responsive (mobile 390px, 24px gutters) ---------- */
 
 @media (max-width: 900px) {
+  .kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+
   .shell {
     grid-template-columns: 1fr;
   }
