@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { INSTALL_URL } from "../api/connectionApi";
 import type { Connection } from "../types";
 import { attentionReason, formatUtc } from "../utils/connectionMessages";
@@ -64,12 +65,17 @@ export function ConnectedCard({ connection, gaveUp, onCheckAgain }: ConnectedPro
         </div>
       )}
       {fetched && count > 0 && (
-        <p className="setup-lead">
-          <strong>
-            {count} {count === 1 ? "repository is" : "repositories are"} available.
-          </strong>{" "}
-          Next you will choose which ones DevPulse should track.
-        </p>
+        <>
+          <p className="setup-lead">
+            <strong>
+              {count} {count === 1 ? "repository is" : "repositories are"} available.
+            </strong>{" "}
+            Next, choose which ones DevPulse should track.
+          </p>
+          <Link className="btn btn-primary" to="/repositories">
+            Select repositories <span aria-hidden="true">→</span>
+          </Link>
+        </>
       )}
       {fetched && count === 0 && (
         <p className="setup-lead">

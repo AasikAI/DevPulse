@@ -80,6 +80,28 @@ services:
       migrate:
         condition: service_completed_successfully
 
+  # The scheduler: every SYNC_INTERVAL_SECONDS (default 15 minutes) it queues a job for
+  # each connection. Run exactly ONE instance, or every connection is queued twice.
+  beat:
+    build: ./backend
+    restart: unless-stopped
+    command:
+      [
+        "celery", "-A", "app.synchronization.celery_app", "beat",
+        "--loglevel=INFO", "--schedule=/var/lib/celerybeat/schedule",
+      ]
+    env_file: .env
+    environment: *backend-env
+    volumes:
+      - devpulse_beat:/var/lib/celerybeat
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
   frontend:
     build: ./frontend
     restart: unless-stopped
@@ -97,3 +119,4 @@ services:
 
 volumes:
   devpulse_pgdata:
+  devpulse_beat:

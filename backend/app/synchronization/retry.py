@@ -6,6 +6,10 @@ MAX_DELAY_SECONDS = 15 * 60
 MAX_RETRIES = 5
 # Longer rate-limit waits are not retried inside one task; the next scheduled run handles them.
 RATE_LIMIT_RETRY_CEILING_SECONDS = MAX_DELAY_SECONDS
+# A job started by a user action that finds another job running retries soon,
+# instead of waiting for the next scheduled run.
+BUSY_RETRY_SECONDS = 30
+BUSY_RETRIES = 5
 
 
 def retry_delay_seconds(

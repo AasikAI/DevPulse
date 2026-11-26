@@ -24,6 +24,42 @@ def make_repo(repo_id: int, name: str | None = None, owner: str = "octocat", pri
     }
 
 
+def make_pr(
+    number: int,
+    *,
+    state: str = "closed",
+    created: str | None = None,
+    updated: str | None = None,
+    merged: str | None = None,
+    draft: bool = False,
+    author: str | None = "alice",
+    branch: str | None = None,
+    title: str | None = None,
+) -> dict:
+    """One entry of GitHub's pull request list. Times default to a day per number."""
+    created = created or f"2026-01-{(number % 28) + 1:02d}T10:00:00Z"
+    return {
+        "id": 700000 + number,
+        "number": number,
+        "state": state,
+        "draft": draft,
+        "title": title or f"Change {number}",
+        "user": None if author is None else {"login": author},
+        "head": None if branch is None and number % 2 else {"ref": branch or f"feature-{number}"},
+        "created_at": created,
+        "updated_at": updated or created,
+        "closed_at": None if state == "open" else (updated or created),
+        "merged_at": merged,
+        # Fields GitHub sends that DevPulse must not keep.
+        "body": "SECRET BODY TEXT",
+        "labels": [{"name": "x"}],
+    }
+
+
+def make_review(user: str, state: str, review_id: int = 1) -> dict:
+    return {"id": review_id, "user": {"login": user}, "state": state, "body": "not stored"}
+
+
 def make_installation(
     installation_id: int = 5001,
     account_id: int = 1001,
@@ -58,10 +94,32 @@ class FakeGitHub:
         self.installation_error: tuple[int, dict, dict] | None = None
         self.token_error: tuple[int, dict, dict] | None = None
         self.repositories_error_on_page: tuple[int, int] | None = None
+        # Pull requests by repository full name, and reviews by (full name, number).
+        self.pull_requests: dict[str, list[dict]] = {}
+        self.reviews: dict[tuple[str, int], list[dict]] = {}
+        self.rate_remaining = 4990
+        self.gone_repositories: set[str] = set()
+        # (status, headers, body) answered for every pull request list call.
+        self.pulls_error: tuple[int, dict, dict] | None = None
+        # {page: status}: the list call for that page fails (any sort).
+        self.pulls_error_on_page: dict[int, int] = {}
+        # Reviews fail from this many review calls onward (503).
+        self.reviews_fail_after: int | None = None
         self.requests: list[httpx.Request] = []
 
     def api_calls(self, path_prefix: str) -> list[httpx.Request]:
         return [r for r in self.requests if r.url.path.startswith(path_prefix)]
+
+    def pull_list_calls(self, full_name: str | None = None) -> list[httpx.Request]:
+        return [
+            r
+            for r in self.requests
+            if re.fullmatch(r"/repos/[^/]+/[^/]+/pulls", r.url.path)
+            and (full_name is None or r.url.path == f"/repos/{full_name}/pulls")
+        ]
+
+    def review_calls(self) -> list[httpx.Request]:
+        return [r for r in self.requests if r.url.path.endswith("/reviews")]
 
     def handler(self, request: httpx.Request) -> httpx.Response:
         self.requests.append(request)
@@ -124,4 +182,46 @@ class FakeGitHub:
                 },
             )
 
+        pulls = re.fullmatch(r"/repos/([^/]+/[^/]+)/pulls", path)
+        if pulls:
+            return self._pulls(pulls.group(1), request)
+        reviews = re.fullmatch(r"/repos/([^/]+/[^/]+)/pulls/(\d+)/reviews", path)
+        if reviews:
+            return self._reviews(reviews.group(1), int(reviews.group(2)))
+
         return httpx.Response(404)
+
+    def _pulls(self, full_name: str, request: httpx.Request) -> httpx.Response:
+        if self.pulls_error:
+            status, headers, body = self.pulls_error
+            return httpx.Response(status, headers=headers, json=body)
+        if full_name in self.gone_repositories:
+            return httpx.Response(404, json={"message": "Not Found"})
+        params = request.url.params
+        page = int(params.get("page", "1"))
+        per_page = int(params.get("per_page", "30"))
+        if page in self.pulls_error_on_page:
+            return httpx.Response(self.pulls_error_on_page[page], json={"message": "boom"})
+        key = "updated_at" if params.get("sort") == "updated" else "created_at"
+        ordered = sorted(
+            self.pull_requests.get(full_name, []),
+            key=lambda pr: (pr[key], pr["number"]),
+            reverse=params.get("direction", "desc") == "desc",
+        )
+        start = (page - 1) * per_page
+        return httpx.Response(
+            200,
+            headers={"x-ratelimit-remaining": str(self.rate_remaining)},
+            json=ordered[start : start + per_page],
+        )
+
+    def _reviews(self, full_name: str, number: int) -> httpx.Response:
+        if full_name in self.gone_repositories:
+            return httpx.Response(404, json={"message": "Not Found"})
+        if self.reviews_fail_after is not None and len(self.review_calls()) > self.reviews_fail_after:
+            return httpx.Response(503, json={"message": "unavailable"})
+        return httpx.Response(
+            200,
+            headers={"x-ratelimit-remaining": str(self.rate_remaining)},
+            json=self.reviews.get((full_name, number), []),
+        )

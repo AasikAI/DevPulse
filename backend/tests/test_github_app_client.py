@@ -7,13 +7,16 @@ from app.github_integration.client import GitHubClient
 from app.github_integration.errors import (
     GitHubAccessError,
     GitHubRateLimitedError,
+    GitHubRepositoryGoneError,
     GitHubUnavailableError,
 )
 from tests.fake_github import (
     FAKE_INSTALLATION_TOKEN,
     FakeGitHub,
     make_installation,
+    make_pr,
     make_repo,
+    make_review,
 )
 from tests.keys import APP_ID, APP_SLUG, PRIVATE_KEY_PATH, PUBLIC_KEY_PEM
 
@@ -268,3 +271,140 @@ async def test_error_text_never_contains_a_token_or_the_private_key():
     text = " ".join(f"{e!r} {e}" for e in errors)
     assert FAKE_INSTALLATION_TOKEN not in text
     assert "BEGIN" not in text
+
+
+# --- Pull requests and reviews ------------------------------------------------------------------
+
+
+async def test_a_pull_request_page_keeps_only_what_devpulse_needs():
+    fake = FakeGitHub()
+    fake.pull_requests["octocat/repo-1"] = [
+        make_pr(2, state="open", draft=True, title="Add login", author="alice", branch="login"),
+        make_pr(4, state="closed", merged="2026-02-02T09:00:00Z"),
+        make_pr(6, state="closed"),
+    ]
+
+    page = await make_client(fake.handler).list_pull_requests(
+        FAKE_INSTALLATION_TOKEN, full_name="octocat/repo-1", sort="created", direction="asc", page=1
+    )
+
+    assert [(p.number, p.state, p.is_draft) for p in page] == [(2, "open", True), (4, "merged", False), (6, "closed", False)]
+    assert (page[0].title, page[0].author_login, page[0].head_branch) == ("Add login", "alice", "login")
+    assert "body" not in page[0].model_dump() and "labels" not in page[0].model_dump()
+
+
+async def test_a_pull_request_from_a_deleted_user_or_branch_is_still_read():
+    fake = FakeGitHub()
+    fake.pull_requests["octocat/repo-1"] = [make_pr(1, author=None)]  # odd number: no head branch either
+
+    (pr,) = await make_client(fake.handler).list_pull_requests(
+        FAKE_INSTALLATION_TOKEN, full_name="octocat/repo-1", sort="created", direction="asc", page=1
+    )
+
+    assert (pr.author_login, pr.head_branch) == (None, None)
+
+
+async def test_the_caller_chooses_the_page_sort_and_order():
+    fake = FakeGitHub()
+
+    await make_client(fake.handler).list_pull_requests(
+        FAKE_INSTALLATION_TOKEN, full_name="octocat/repo-1", sort="updated", direction="desc", page=3
+    )
+
+    params = fake.pull_list_calls()[0].url.params
+    assert (params["state"], params["sort"], params["direction"], params["page"], params["per_page"]) == (
+        "all",
+        "updated",
+        "desc",
+        "3",
+        "50",
+    )
+
+
+async def test_a_missing_repository_is_not_treated_as_lost_installation_access():
+    fake = FakeGitHub()
+    fake.gone_repositories = {"octocat/repo-1"}
+
+    with pytest.raises(GitHubRepositoryGoneError):
+        await make_client(fake.handler).list_pull_requests(
+            FAKE_INSTALLATION_TOKEN, full_name="octocat/repo-1", sort="created", direction="asc", page=1
+        )
+
+
+async def test_a_missing_pull_request_permission_is_reported_for_the_connection():
+    fake = FakeGitHub()
+    fake.pulls_error = (403, {}, {"message": "Resource not accessible by integration"})
+
+    with pytest.raises(GitHubAccessError) as raised:
+        await make_client(fake.handler).list_pull_requests(
+            FAKE_INSTALLATION_TOKEN, full_name="octocat/repo-1", sort="created", direction="asc", page=1
+        )
+
+    assert raised.value.reason == "permission_missing"
+
+
+async def test_requests_and_the_remaining_rate_limit_are_counted_for_the_run_budget():
+    fake = FakeGitHub()
+    fake.rate_remaining = 1234
+    client = make_client(fake.handler)
+    assert (client.request_count, client.rate_limit_remaining) == (0, None)
+
+    await client.list_pull_requests(
+        FAKE_INSTALLATION_TOKEN, full_name="octocat/repo-1", sort="created", direction="asc", page=1
+    )
+    await client.get_review_state(FAKE_INSTALLATION_TOKEN, full_name="octocat/repo-1", number=1)
+
+    assert (client.request_count, client.rate_limit_remaining) == (2, 1234)
+
+
+@pytest.mark.parametrize(
+    ("reviews", "expected"),
+    [
+        ([], "none"),
+        ([make_review("a", "PENDING")], "none"),  # an unsubmitted draft review does not count
+        ([make_review("a", "COMMENTED")], "commented"),
+        ([make_review("a", "APPROVED")], "approved"),
+        ([make_review("a", "CHANGES_REQUESTED")], "changes_requested"),
+        # Anyone still requesting changes outweighs an approval.
+        ([make_review("a", "APPROVED", 1), make_review("b", "CHANGES_REQUESTED", 2)], "changes_requested"),
+        # Only a reviewer's latest opinion counts.
+        ([make_review("a", "CHANGES_REQUESTED", 1), make_review("a", "APPROVED", 2)], "approved"),
+        ([make_review("a", "APPROVED", 1), make_review("a", "CHANGES_REQUESTED", 2)], "changes_requested"),
+        # A dismissed review cancels that opinion; the review still counts as feedback.
+        ([make_review("a", "CHANGES_REQUESTED", 1), make_review("a", "DISMISSED", 2)], "commented"),
+        ([make_review("a", "COMMENTED", 1), make_review("a", "APPROVED", 2)], "approved"),
+    ],
+)
+async def test_review_state_is_summarised_from_each_reviewers_latest_opinion(reviews, expected):
+    fake = FakeGitHub()
+    fake.reviews[("octocat/repo-1", 7)] = reviews
+
+    state = await make_client(fake.handler).get_review_state(
+        FAKE_INSTALLATION_TOKEN, full_name="octocat/repo-1", number=7
+    )
+
+    assert state == expected
+
+
+async def test_reviews_beyond_the_first_page_are_read():
+    fake = FakeGitHub()
+    # 100 comments fill page 1; the change request is only on page 2.
+    fake.reviews[("octocat/repo-1", 7)] = [make_review(f"user{i}", "COMMENTED", i) for i in range(100)] + [
+        make_review("late", "CHANGES_REQUESTED", 1000)
+    ]
+    original = fake._reviews
+
+    def paged(full_name, number):
+        response = original(full_name, number)
+        page = int(fake.requests[-1].url.params.get("page", "1"))
+        items = httpx.Response(200, content=response.content).json()
+        return httpx.Response(200, json=items[(page - 1) * 100 : page * 100])
+
+    fake._reviews = paged
+
+    state = await make_client(fake.handler).get_review_state(
+        FAKE_INSTALLATION_TOKEN, full_name="octocat/repo-1", number=7
+    )
+
+    assert state == "changes_requested"
+    assert len(fake.review_calls()) == 2

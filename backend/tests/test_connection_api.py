@@ -27,6 +27,9 @@ def connect_url(error: str | None = None) -> str:
     return f"{ORIGIN}/connect" + (f"?error={error}" if error else "")
 
 
+REPOSITORIES_URL = f"{ORIGIN}/repositories"
+
+
 # --- Connection status ---------------------------------------------------------------
 
 
@@ -77,7 +80,7 @@ async def test_installing_the_app_connects_my_account_and_fetches_my_repositorie
 
     callback = await connect(browser)
 
-    assert callback.headers["location"] == connect_url()
+    assert callback.headers["location"] == REPOSITORIES_URL
     status = (await browser.get("/api/github/connection")).json()
     assert status["status"] == "active"
     assert status["account_login"] == "octocat"
@@ -138,7 +141,7 @@ async def test_if_the_job_cannot_be_queued_the_connection_is_still_saved(
 
     callback = await connect(browser)
 
-    assert callback.headers["location"] == connect_url()
+    assert callback.headers["location"] == REPOSITORIES_URL
     assert (await browser.get("/api/github/connection")).json()["status"] == "active"
 
 
@@ -285,7 +288,7 @@ async def test_updating_repository_access_on_github_refreshes_my_repositories(
 
     response = await finish_install(browser, setup_action="update")
 
-    assert response.headers["location"] == connect_url()
+    assert response.headers["location"] == REPOSITORIES_URL
     assert len(dispatcher.calls) == 1
 
 
@@ -312,6 +315,17 @@ async def test_a_suspended_installation_needs_attention_and_is_not_fetched(
     status = (await browser.get("/api/github/connection")).json()
     assert (status["status"], status["reason"]) == ("needs_attention", "suspended")
     assert dispatcher.calls == []
+
+
+async def test_a_connection_that_needs_attention_stays_on_the_connect_page(
+    browser, github: FakeGitHub
+):
+    github.installations[5001] = make_installation(suspended=True)
+    await sign_in(browser)
+
+    response = await connect(browser)
+
+    assert response.headers["location"] == connect_url()
 
 
 async def test_a_missing_pull_request_permission_needs_attention(

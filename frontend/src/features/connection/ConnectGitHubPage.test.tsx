@@ -73,6 +73,24 @@ describe("connect GitHub page: connected", () => {
     expect(screen.getByText("Last checked: 26 Nov 2026, 10:30 UTC")).toBeInTheDocument();
   });
 
+  it("leads on to choosing repositories once they are available", async () => {
+    stubApi(connection(connectedAs()));
+    renderConnect();
+
+    expect(await screen.findByRole("link", { name: /select repositories/i })).toHaveAttribute(
+      "href",
+      "/repositories",
+    );
+  });
+
+  it("does not offer to choose repositories while they are still being fetched", async () => {
+    stubApi(connection(connectedAs({ repositories_synced_at: null, repository_count: 0 })));
+    renderConnect();
+    await screen.findByText("Fetching your repositories…");
+
+    expect(screen.queryByRole("link", { name: /select repositories/i })).not.toBeInTheDocument();
+  });
+
   it("uses the singular for one repository", async () => {
     stubApi(connection(connectedAs({ repository_count: 1 })));
     renderConnect();

@@ -3,6 +3,7 @@ import RequireAuth from "./features/auth/components/RequireAuth";
 import SignInPage from "./features/auth/pages/SignInPage";
 import StartPage from "./features/auth/pages/StartPage";
 import ConnectGitHubPage from "./features/connection/pages/ConnectGitHubPage";
+import SelectRepositoriesPage from "./features/repositories/pages/SelectRepositoriesPage";
 import Landing from "./Landing";
 import "./styles/landing.css";
 import "./styles/app.css";
@@ -15,6 +16,7 @@ export default function App() {
       <Route element={<RequireAuth />}>
         <Route path="/start" element={<StartPage />} />
         <Route path="/connect" element={<ConnectGitHubPage />} />
+        <Route path="/repositories" element={<SelectRepositoriesPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

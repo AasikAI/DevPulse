@@ -29,6 +29,15 @@ class Settings(BaseSettings):
 
     redis_url: str = "redis://localhost:6379/0"
 
+    # How often the scheduler checks every connection. Smaller values are for local testing.
+    sync_interval_seconds: int = 900
+    # One job run stops cleanly after this long and continues in the next run.
+    sync_run_budget_seconds: int = 480
+    # Stop a run when GitHub says fewer than this many requests are left in the hour.
+    sync_rate_limit_reserve: int = 200
+    # 0 means no limit. A small value makes the multi-run history import easy to try.
+    sync_run_max_requests: int = 0
+
     session_lifetime_days: int = 14
     oauth_state_ttl_minutes: int = 10
 

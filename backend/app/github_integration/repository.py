@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import select, update
+from sqlalchemy import or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -99,3 +99,37 @@ class ConnectionRepository:
             .where(GithubConnection.id == connection_id)
             .values(repositories_synced_at=now, last_checked_at=now, updated_at=now)
         )
+
+    async def mark_sync_success(self, *, connection_id: uuid.UUID, now: datetime) -> None:
+        await self._db.execute(
+            update(GithubConnection)
+            .where(GithubConnection.id == connection_id)
+            .values(
+                last_successful_sync_at=now,
+                last_checked_at=now,
+                rate_limited_until=None,
+                updated_at=now,
+            )
+        )
+
+    async def mark_rate_limited(
+        self, *, connection_id: uuid.UUID, until: datetime, now: datetime
+    ) -> None:
+        await self._db.execute(
+            update(GithubConnection)
+            .where(GithubConnection.id == connection_id)
+            .values(rate_limited_until=until, updated_at=now)
+        )
+
+    async def list_due_ids(self, *, now: datetime) -> list[uuid.UUID]:
+        """Active connections that are not waiting out a rate limit."""
+        result = await self._db.execute(
+            select(GithubConnection.id).where(
+                GithubConnection.status == "active",
+                or_(
+                    GithubConnection.rate_limited_until.is_(None),
+                    GithubConnection.rate_limited_until <= now,
+                ),
+            )
+        )
+        return list(result.scalars())

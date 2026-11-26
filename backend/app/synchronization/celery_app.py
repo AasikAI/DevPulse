@@ -5,6 +5,8 @@ from app.common.logging import configure_logging
 from app.config import get_settings
 
 REPOSITORY_LIST_TASK = "sync.repository_list"
+PULL_REQUESTS_TASK = "sync.pull_requests"
+DISPATCH_DUE_TASK = "sync.dispatch_due"
 
 _settings = get_settings()
 
@@ -43,5 +45,12 @@ celery_app.conf.update(
         "interval_start": 0,
         "interval_step": 0.2,
         "interval_max": 0.5,
+    },
+    # Celery Beat (run exactly one instance) queues a check of every connection on this interval.
+    beat_schedule={
+        "dispatch-due-syncs": {
+            "task": DISPATCH_DUE_TASK,
+            "schedule": float(_settings.sync_interval_seconds),
+        },
     },
 )
