@@ -7,8 +7,17 @@ export default function StartPage() {
   const { user } = state;
 
   return (
-    <div className="content">
-      <h1 className="page-title">You are signed in</h1>
+    <main className="content">
+      <header>
+        <h1 className="page-title">You are signed in</h1>
+        <p className="page-subtitle">Your DevPulse account is ready.</p>
+      </header>
+      <p className="banner banner-success">
+        <strong>
+          <span aria-hidden="true">✓</span> Signed in.
+        </strong>
+        Next, connect your GitHub account to bring in your pull request data.
+      </p>
       <div className="card">
         <h2>Welcome, {user.name ?? user.login}</h2>
         <p>
@@ -16,6 +25,6 @@ export default function StartPage() {
           comes next.
         </p>
       </div>
-    </div>
+    </main>
   );
 }

@@ -165,7 +165,7 @@ describe("landing page", () => {
     stubApi(signedOut);
     renderApp("/");
 
-    const [cta] = await screen.findAllByRole("link", { name: /continue with github/i });
+    const [cta] = await screen.findAllByRole("link", { name: /get started/i });
 
     expect(cta).toHaveAttribute("href", "/sign-in");
   });

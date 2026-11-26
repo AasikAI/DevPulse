@@ -13,6 +13,12 @@
   --color-surface: #ffffff;
   --color-border: #e1e6e9;
   --color-accent-soft: #e3f2ee;
+  --color-accent-strong: #066a5b;
+  --color-danger-soft: #fbe9eb;
+  --color-warning-soft: #fff1d6;
+  --color-blue-soft: #e8effb;
+  --color-neutral-soft: #e8ecee;
+  --color-nav-muted: #b8c7cc;
 
   /* Typography */
   --font-sans: "Inter", system-ui, sans-serif;

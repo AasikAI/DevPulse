@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import Logo from "./shared/components/Logo";
 
 const DEPLOY_BARS = [28, 40, 34, 52, 46, 62, 58, 48, 70, 60, 76, 66, 84, 78, 92, 86];
 
@@ -68,7 +69,7 @@ const FAQ = [
 function ConnectButton() {
   return (
     <Link to="/sign-in" className="lp-btn lp-btn-primary">
-      Continue with GitHub →
+      Get Started →
     </Link>
   );
 }
@@ -77,6 +78,9 @@ export default function Landing() {
   return (
     <div className="lp">
       <header className="lp-nav">
+        <Link to="/" className="logo-link" aria-label="DevPulse home">
+          <Logo />
+        </Link>
         <nav className="lp-nav-links" aria-label="Landing">
           <a href="#platform">Platform</a>
           <a href="#how-it-works">How it works</a>
@@ -101,16 +105,13 @@ export default function Landing() {
           </p>
           <div className="lp-actions">
             <ConnectButton />
-            <button type="button" className="lp-btn lp-btn-secondary">
-              Explore the demo
-            </button>
           </div>
           <p className="lp-fine">Read-only access · Choose your repositories · Set up in minutes</p>
         </div>
 
         <aside className="lp-preview" aria-label="Example dashboard preview">
           <div className="lp-preview-head">
-            <span>devpulse / acme-engineering</span>
+            <span>DevPulse</span>
             <span className="lp-live">● Live</span>
           </div>
           <h2 className="lp-preview-title">Delivery, without the blind spots.</h2>
@@ -212,7 +213,7 @@ export default function Landing() {
 
       <footer className="lp-footer">
         <span>
-          <strong>devpulse</strong> / Engineering intelligence
+          <strong>DevPulse</strong> / Engineering intelligence
         </span>
         <span className="lp-footer-links">
           <a href="#privacy">Privacy</a>
