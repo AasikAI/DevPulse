@@ -1,22 +1,52 @@
-from fastapi import Depends, FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
+import httpx
+from fastapi import Depends, FastAPI, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.common.errors import AppError
+from app.common.logging import configure_logging
+from app.common.middleware import OriginCheckMiddleware, RequestContextMiddleware
 from app.config import get_settings
 from app.db import get_db
+from app.github_integration.client import GitHubClient
+from app.identity.router import router as identity_router
 
 settings = get_settings()
+configure_logging()
 
-app = FastAPI(title=settings.app_name)
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.cors_origins,
-    allow_methods=["GET"],
-    allow_headers=["*"],
-)
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    async with httpx.AsyncClient(timeout=10.0) as http:
+        app.state.github_client = GitHubClient(
+            client_id=settings.github_app_client_id,
+            client_secret=settings.github_app_client_secret.get_secret_value(),
+            http=http,
+        )
+        yield
+
+
+app = FastAPI(title=settings.app_name, lifespan=lifespan)
+
+# The browser reaches the API through the frontend origin (Vite proxy), so
+# there is no cross-origin traffic and no CORS configuration.
+# Added first so it runs second: the request context wraps everything.
+app.add_middleware(OriginCheckMiddleware, allowed_origin=settings.frontend_origin)
+app.add_middleware(RequestContextMiddleware)
+
+
+@app.exception_handler(AppError)
+async def handle_app_error(_: Request, exc: AppError) -> JSONResponse:
+    return JSONResponse(
+        status_code=exc.status_code, content={"code": exc.code, "message": exc.message}
+    )
+
+
+app.include_router(identity_router, prefix="/api")
 
 
 @app.get("/health")

@@ -1,5 +1,6 @@
 from functools import lru_cache
 
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import URL
 
@@ -12,13 +13,30 @@ class Settings(BaseSettings):
 
     app_name: str = "DevPulse"
     environment: str = "development"
-    cors_origins: list[str] = ["http://localhost:5173"]
+
+    # The browser only talks to this origin; Vite proxies /api to FastAPI.
+    frontend_base_url: str = "http://localhost:5173"
+
+    # Empty until the GitHub App is registered; sign-in then answers 503.
+    github_app_client_id: str = ""
+    github_app_client_secret: SecretStr = SecretStr("")
+
+    session_lifetime_days: int = 14
+    oauth_state_ttl_minutes: int = 10
 
     postgres_user: str
     postgres_password: str
     postgres_db: str
     postgres_host: str = "localhost"
     postgres_port: int = 5432
+
+    @property
+    def cookie_secure(self) -> bool:
+        return self.environment == "production"
+
+    @property
+    def frontend_origin(self) -> str:
+        return self.frontend_base_url.rstrip("/")
 
     @property
     def database_url(self) -> URL:

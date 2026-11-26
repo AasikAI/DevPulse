@@ -10,6 +10,7 @@ from app.config import get_settings
 from app.db import Base
 
 # Import model modules here so their tables register on Base.metadata.
+from app.identity import models as identity_models  # noqa: F401
 
 config = context.config
 

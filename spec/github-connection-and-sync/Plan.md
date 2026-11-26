@@ -1,6 +1,6 @@
 # Plan: GitHub connection and scheduled data sync
 
-**Status:** Draft, waiting for your review. No code has been written.
+**Status:** Reviewed 2026-11-26. Slice 1 built and waiting for your review; slices 2 to 6 not started.
 **Spec:** [spec.md](./spec.md)
 **Date:** 2026-11-25
 
@@ -119,28 +119,28 @@ Anything else redirects to `/connect?error=installation_not_allowed` without say
 
 ### 3.5 How the all-history fetch is split across runs
 
-I recommend the **GraphQL API** for pull requests, not REST. Review state needs a per-PR call in REST (one request per PR for a big history), while GraphQL returns PR state, dates, and review info together, 50 PRs per page.
+**Decided (2026-11-26): REST only**, for both the repository list and pull requests. The list call `GET /repos/{owner}/{repo}/pulls?state=all` gives state, draft flag, title, author, branch and dates, 50 per page. Review state needs one extra call per pull request, `GET /repos/{owner}/{repo}/pulls/{number}/reviews`. To keep that affordable, reviews are fetched only for pull requests that are new or whose `updated_at` changed since the stored row. This makes the first fetch of a large history expensive in API calls (about one call per pull request), which is why it is split across runs and rate-limit aware.
 
-- **Per repository state:** `backfill_cursor`, `backfill_started_at`, `backfill_completed_at`, `incremental_watermark`, `last_synced_at`.
-- **Backfill:** order **oldest-created first**. This keeps the cursor stable between runs (new PRs only append at the end). Each page's upsert and cursor update are committed in **one transaction**, so progress is never lost and never half-saved.
+- **Per repository state:** `backfill_cursor` (the next page number), `backfill_started_at`, `backfill_completed_at`, `incremental_watermark`, `last_synced_at`.
+- **Backfill:** `sort=created&direction=asc`, oldest first, 50 per page. This keeps page numbers stable between runs (new PRs only append at the end). Each page is saved (upserts plus cursor) in **one transaction** after its reviews are fetched, so progress is never half-saved. If the budget runs out mid-page, at most one page of calls is repeated next run.
 - **After backfill completes:** `incremental_watermark = backfill_started_at`, so PRs changed during the long backfill are caught by the next incremental pass.
-- **Incremental runs:** order **recently updated first**, stop at the first PR older than `watermark - 5 minutes`, then set the watermark to this run's start time.
-- **Run budget:** a task stops cleanly (run status `partial`) when it has used about 8 minutes, or GitHub reports fewer than 500 GraphQL points remaining. The next 15-minute run continues from the saved cursor. Repositories are processed oldest-synced first, so one huge repository cannot starve the others.
+- **Incremental runs:** `sort=updated&direction=desc`, stop at the first PR older than `watermark - 5 minutes`, then set the watermark to this run's start time.
+- **Run budget:** a task stops cleanly (run status `partial`) when it has used about 8 minutes, or the `X-RateLimit-Remaining` header reports fewer than 200 requests left. The next 15-minute run continues from the saved cursor. Repositories are processed oldest-synced first, so one huge repository cannot starve the others.
 - **Celery limits:** soft limit 540 s, hard limit 600 s.
 - **Reselecting** a repository resumes: unfinished backfill continues from its cursor, finished backfill runs an incremental pass from its old watermark (catching up on what changed meanwhile).
 
 ### 3.6 Review state
 
-GraphQL `reviewDecision` is empty when a repository has no review rules, so it is not enough. I derive `review_state` from the data: `changes_requested` if any latest opinionated review requests changes, else `approved` if any approves, else `commented` if there are any reviews, else `none`. Pull request state is `open`, `closed` (not merged), or `merged`; `is_draft` is kept too.
+The reviews endpoint returns every review event, so `review_state` is derived: take each reviewer's latest `APPROVED` / `CHANGES_REQUESTED` / `DISMISSED` review; `changes_requested` if any reviewer's latest opinion requests changes, else `approved` if any approves, else `commented` if there are any reviews, else `none`. Pull request state is `open`, `closed` (not merged), or `merged`; `is_draft` is kept too.
 
-**Not stored:** titles, bodies, authors, branch names, file names, source code. The spec only asks for state, review state, and key dates, and this keeps the data neutral (no person-level data to rank).
+**Stored (decided 2026-11-26):** title, author login, head branch name, state, draft flag, review state, and key dates. **Not stored:** PR bodies, comments, file names, source code. Author is stored for display only: no endpoint or widget may group, rank, or compare by author (non-goal), and the widget shows only counts over time.
 
 ### 3.7 Retry timings and rate limits
 
 | Case | Behaviour |
 |---|---|
 | Temporary (GitHub 5xx, timeout, network) | Retry with exponential backoff and full jitter: base 60 s, doubling, capped at 15 min, **at most 5 retries** (roughly 1, 2, 4, 8, 15 min). After that the run is `failed` and the next 15-minute beat tries again. |
-| Rate limit (`429`, or `403` with exhausted limit, or GraphQL `remaining` low) | If the reset is within 15 min, retry at reset plus jitter. If it is later, end the run as `rate_limited`, store `rate_limited_until` on the connection, and let Beat skip that connection until then. |
+| Rate limit (`429`, or `403` with exhausted limit, or `X-RateLimit-Remaining` low) | If the reset is within 15 min, retry at reset plus jitter. If it is later, end the run as `rate_limited`, store `rate_limited_until` on the connection, and let Beat skip that connection until then. |
 | Revoked or missing access (installation `404`, suspended, `401`, or `pull_requests` permission missing) | **No retry.** Connection becomes `needs_attention` with a safe reason (`access_revoked`, `permission_missing`, `suspended`). Beat skips non-`active` connections. |
 | Unexpected error | One retry, then `failed` with category `unexpected`. Details only in logs (redacted), never in API responses. |
 
@@ -196,12 +196,12 @@ Celery tasks are synchronous, but our services and repositories are async. Each 
 | `oauth_states` | id, `state_hash`, `nonce_hash`, purpose, user_id (nullable), expires_at, consumed_at | unique `state_hash`; index expires_at |
 | `github_connections` | id, user_id, `installation_id` (bigint), github_account_id, github_account_login, account_type, permissions (jsonb), status (`active` / `needs_attention`), status_reason, last_checked_at, last_successful_sync_at, rate_limited_until, repositories_synced_at, created_at, updated_at | unique `user_id` (one per user); unique `installation_id` |
 | `repositories` | id, connection_id, `github_repo_id`, owner_login, name, full_name, is_private, is_available, is_selected, selected_at, backfill_cursor, backfill_started_at, backfill_completed_at, incremental_watermark, last_synced_at | unique `(connection_id, github_repo_id)`; index `(connection_id, is_selected)` |
-| `pull_requests` | id, repository_id, github_pr_id, number, state, is_draft, review_state, created_at_gh, updated_at_gh, closed_at, merged_at, fetched_at | unique `(repository_id, number)`; indexes `(repository_id, created_at_gh)`, `(repository_id, merged_at)`, `(repository_id, state)`; FK cascade |
+| `pull_requests` | id, repository_id, github_pr_id, number, state, is_draft, title, author_login, head_branch, review_state, created_at_gh, updated_at_gh, closed_at, merged_at, fetched_at | unique `(repository_id, number)`; indexes `(repository_id, created_at_gh)`, `(repository_id, merged_at)`, `(repository_id, state)`; FK cascade |
 | `sync_runs` | id, connection_id, kind (`repository_list` / `pull_requests`), trigger (`connected` / `selection_saved` / `schedule`), status (`running` / `succeeded` / `partial` / `failed` / `rate_limited`), started_at, finished_at, error_category, repositories_total, repositories_completed | partial unique index one `running` per connection; index `(connection_id, started_at desc)` |
 
 Notes:
 
-- Repositories also store only the sync progress needed for backfill. No source code, no PR text.
+- Repositories also store only the sync progress needed for backfill. No source code, no PR bodies or comments.
 - The `repositories` backfill columns and `pull_requests` / `sync_runs` arrive in slice 4's migration, so each slice creates only what it needs.
 - "Unselect" sets `is_selected = false`; rows are kept. Queries for the widget and for fetching always filter on `is_selected AND is_available`.
 - A repository that disappears from the installation gets `is_available = false` (hidden, not fetched, data kept).
@@ -267,7 +267,7 @@ Each slice is a vertical, working step: code, tests, and migration together, the
 
 **Result:** Saving a selection fetches pull request data right away, then every 15 minutes, with no duplicates, resumable history import, retries, and a `needs attention` stop. Visible via the database (and the existing connection status); the widget comes next.
 
-- Backend: GraphQL part of `GitHubClient` (PRs, reviews, rate limit), `pull_requests` module (model, upsert repository), `synchronization.service` (repository-list refresh, then PR sync with backfill and incremental per 3.5; run lock per 3.12; retry and classification per 3.7), Celery Beat schedule `dispatch_due_syncs` every 900 s (active connections with at least one selected and available repository), `sync_pull_requests` task, wire the selection save to enqueue, `sync_runs` for the PR kind, Alembic revision 3 (also adds the repository sync-state columns).
+- Backend: REST pull request and review calls in `GitHubClient` (pagination, rate-limit headers), `pull_requests` module (model, upsert repository), `synchronization.service` (repository-list refresh, then PR sync with backfill and incremental per 3.5; run lock per 3.12; retry and classification per 3.7), Celery Beat schedule `dispatch_due_syncs` every 900 s (active connections with at least one selected and available repository), `sync_pull_requests` task, wire the selection save to enqueue, `sync_runs` for the PR kind, Alembic revision 3 (also adds the repository sync-state columns).
 - Infra: compose `beat` plus schedule volume.
 - Tests: scenarios "scheduled job stores PR data" and "running again creates no duplicates"; "GitHub temporarily unavailable" (earlier data kept, retry scheduled); "Access is removed on GitHub" (no retry, needs attention); partial run resumes from cursor; run budget respected; rate-limit handling; duplicate or concurrent delivery safe (second task exits); re-select resumes; due-connection selection (skips needs-attention, rate-limited, nothing selected); Celery args contain no credentials; bounded retries. PostgreSQL integration tests for the unique constraints, the upserts, and the single-running-run index.
 
@@ -281,7 +281,7 @@ Each slice is a vertical, working step: code, tests, and migration together, the
 
 ### Slice 6: Hardening and acceptance
 
-- Playwright: 2 to 3 journeys with mocked API routes (sign in to connect page; connected with selection to dashboard with last updated; stale data visible). No real credentials.
+- Playwright end-to-end tests are **out of scope** (decided 2026-11-26). Key journeys are covered by React Testing Library and API integration tests.
 - Security sweep against the "Security assertions" list in the tests instructions; log redaction test across the sync path.
 - README run section (GitHub App setup, `.env`, `docker compose up`, running tests), and verifying every acceptance criterion below, including a clean `docker compose up` from scratch.
 - Your UI/UX pass items come after this review.
@@ -329,7 +329,7 @@ All are within the approved stack except where noted.
 
 **Frontend runtime:** `react-router-dom`, `echarts`.
 
-**Frontend dev:** `vitest`, `jsdom`, `@testing-library/react`, `@testing-library/user-event`, `@testing-library/jest-dom`, `@playwright/test`, and optionally `msw` (the instructions say to mock FastAPI at the network boundary; without it I would stub `fetch` by hand, which is more code but one fewer dependency).
+**Frontend dev:** `vitest`, `jsdom`, `@testing-library/react`, `@testing-library/user-event`, `@testing-library/jest-dom`. No Playwright (decided). No `msw`: tests stub `fetch` by hand at the network boundary, which is one fewer dependency.
 
 **Not adding:** a state library, a JSON-logging library (a small stdlib formatter is enough), an email validator, any scheduler other than Celery Beat.
 
@@ -339,7 +339,7 @@ All are within the approved stack except where noted.
 
 | Risk | Handling |
 |---|---|
-| Large repositories exhaust GitHub rate limits | GraphQL (cheap per PR), per-page commits, run budget, reserve of 500 points, `rate_limited_until`, oldest-synced-first fairness (3.5, 3.7). |
+| Large repositories exhaust GitHub rate limits | REST costs about one call per PR on the first fetch, so: reviews fetched only for new or changed PRs, per-page commits, run budget, reserve of 200 requests, `rate_limited_until`, oldest-synced-first fairness (3.5, 3.7). |
 | Sync progress lost or duplicated | Cursor and upsert in one transaction; unique `(repository_id, number)`; single running run per connection. |
 | A forged `installation_id` links someone else's installation | Ownership check in 3.4 (account ID must equal your GitHub ID), unique `installation_id`, state bound to the user and a nonce cookie. |
 | Redis down when saving a selection | Selection is saved first; enqueue failure is logged; the next beat picks it up. UI shows "waiting for first sync". |
@@ -353,7 +353,9 @@ All are within the approved stack except where noted.
 
 ---
 
-## 10. Decisions I would like you to confirm
+## 10. Decisions (reviewed 2026-11-26)
+
+Result: items 1, 2, 4, 5, 6, 7, 8 kept as written. **Item 3 changed to REST only. Item 9 changed to store title, author, and head branch. Playwright dropped. `msw` not used.** The original list follows; items 3 and 9 are superseded by sections 3.5 and 3.6.
 
 1. **Vite proxy and same-origin cookies** (3.2), including changing [api.ts](../../frontend/src/api.ts) to relative URLs.
 2. **Installation ownership check by account ID** instead of storing a user token or asking for authorization during install (3.4).

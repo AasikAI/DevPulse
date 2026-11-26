@@ -1,22 +1,23 @@
+import { Navigate, Route, Routes } from "react-router-dom";
+import AppShell from "./app/AppShell";
+import RequireAuth from "./features/auth/components/RequireAuth";
+import SignInPage from "./features/auth/pages/SignInPage";
+import StartPage from "./features/auth/pages/StartPage";
 import Landing from "./Landing";
 import "./styles/landing.css";
+import "./styles/app.css";
 
 export default function App() {
   return (
-    <div className="shell">
-      <aside className="sidebar">
-        <div className="logo">DevPulse</div>
-        <nav className="nav" aria-label="Primary">
-          <a href="#overview" aria-current="page">
-            Overview
-          </a>
-          <a href="#cicd">CI/CD insights</a>
-          <a href="#technology">Technology insights</a>
-        </nav>
-      </aside>
-      <main className="main">
-        <Landing />
-      </main>
-    </div>
+    <Routes>
+      <Route path="/" element={<Landing />} />
+      <Route path="/sign-in" element={<SignInPage />} />
+      <Route element={<RequireAuth />}>
+        <Route element={<AppShell />}>
+          <Route path="/start" element={<StartPage />} />
+        </Route>
+      </Route>
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
   );
 }

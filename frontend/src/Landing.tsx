@@ -1,3 +1,5 @@
+import { Link } from "react-router-dom";
+
 const DEPLOY_BARS = [28, 40, 34, 52, 46, 62, 58, 48, 70, 60, 76, 66, 84, 78, 92, 86];
 
 const AUDIENCES = ["Engineering leads", "Platform teams", "Growing organisations"];
@@ -37,7 +39,7 @@ const STEPS = [
   {
     n: "03",
     title: "Find your next move",
-    body: "Get 90 days of context, then stay current with webhook updates.",
+    body: "Import your full pull request history, then stay current with updates every 15 minutes.",
   },
 ];
 
@@ -55,7 +57,7 @@ const FAQ = [
   },
   {
     q: "How far back does the first sync go?",
-    a: "Your initial sync imports 90 days of activity for the repositories you select.",
+    a: "Your first sync imports the full pull request history of the repositories you select. Very large histories can take several update cycles to finish.",
   },
   {
     q: "Can I start with just a few repositories?",
@@ -65,9 +67,9 @@ const FAQ = [
 
 function ConnectButton() {
   return (
-    <button type="button" className="lp-btn lp-btn-primary">
-      Connect GitHub →
-    </button>
+    <Link to="/sign-in" className="lp-btn lp-btn-primary">
+      Continue with GitHub →
+    </Link>
   );
 }
 
