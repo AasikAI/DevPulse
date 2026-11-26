@@ -16,9 +16,15 @@ from app.github_integration.errors import (
     GitHubAccessError,
     GitHubAuthorizationError,
     GitHubRateLimitedError,
+    GitHubRepositoryGoneError,
     GitHubUnavailableError,
 )
-from app.github_integration.schemas import GitHubInstallation, GitHubRepositoryInfo, GitHubUser
+from app.github_integration.schemas import (
+    GitHubInstallation,
+    GitHubPullRequestInfo,
+    GitHubRepositoryInfo,
+    GitHubUser,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -28,8 +34,13 @@ GITHUB_API_URL = "https://api.github.com"
 # The read-only permissions DevPulse asks each installation token for.
 TOKEN_PERMISSIONS = {"metadata": "read", "pull_requests": "read"}
 REPOSITORIES_PER_PAGE = 100
-# Safety stop for runaway pagination (10,000 repositories).
+PULL_REQUESTS_PER_PAGE = 50
+REVIEWS_PER_PAGE = 100
+# Safety stops for runaway pagination.
 MAX_REPOSITORY_PAGES = 100
+MAX_REVIEW_PAGES = 10
+# Reviews that state an opinion; a later one from the same person replaces an earlier one.
+_OPINION_STATES = {"APPROVED", "CHANGES_REQUESTED", "DISMISSED"}
 # GitHub allows at most 10 minutes; stay under it and allow for clock drift.
 APP_JWT_LIFETIME_SECONDS = 540
 APP_JWT_BACKDATE_SECONDS = 60
@@ -62,6 +73,9 @@ class GitHubClient:
         self._app_id = app_id
         self._app_slug = app_slug
         self._private_key_path = private_key_path
+        # Bookkeeping a job run uses to stay inside GitHub's limits.
+        self.request_count = 0
+        self.rate_limit_remaining: int | None = None
 
     @property
     def is_configured(self) -> bool:
@@ -179,12 +193,16 @@ class GitHubClient:
         json: dict | None = None,
         params: dict | None = None,
         app_level: bool = False,
+        repo_scoped: bool = False,
     ) -> httpx.Response:
         """Call the GitHub API and turn failures into internal errors.
 
         `app_level` is true for calls authenticated with the app JWT, where a 401
         means our own configuration is wrong rather than that access was revoked.
+        `repo_scoped` is true for calls about one repository, where a 404 means that
+        repository is gone, not that the whole installation was removed.
         """
+        self.request_count += 1
         try:
             response = await self._http.request(
                 method,
@@ -201,8 +219,12 @@ class GitHubClient:
             logger.warning("github api request failed", extra={"error": type(exc).__name__})
             raise GitHubUnavailableError() from None
 
+        remaining = response.headers.get("x-ratelimit-remaining")
+        if remaining is not None and remaining.isdigit():
+            self.rate_limit_remaining = int(remaining)
+
         status = response.status_code
-        if status < 400:
+        if 200 <= status < 300:
             return response
 
         message = _error_message(response)
@@ -225,6 +247,8 @@ class GitHubClient:
                 raise NotConfiguredError()
             raise GitHubAccessError(ACCESS_REVOKED)
         if status == 404:
+            if repo_scoped:
+                raise GitHubRepositoryGoneError()
             raise GitHubAccessError(ACCESS_REVOKED)
         if status == 403:
             if "suspended" in message:
@@ -309,6 +333,98 @@ class GitHubClient:
             if len(items) < REPOSITORIES_PER_PAGE:
                 break
         return repositories
+
+    async def list_pull_requests(
+        self,
+        installation_token: str,
+        *,
+        full_name: str,
+        sort: str,
+        direction: str,
+        page: int,
+    ) -> list[GitHubPullRequestInfo]:
+        """One page (50) of a repository's pull requests, in any state.
+
+        The caller decides which page to read next, so it can stop when its time
+        or request budget runs out and carry on in the next run.
+        """
+        response = await self._api_request(
+            "GET",
+            f"/repos/{full_name}/pulls",
+            bearer=installation_token,
+            params={
+                "state": "all",
+                "sort": sort,
+                "direction": direction,
+                "per_page": PULL_REQUESTS_PER_PAGE,
+                "page": page,
+            },
+            repo_scoped=True,
+        )
+        try:
+            return [_parse_pull_request(item) for item in response.json()]
+        except (ValueError, KeyError, TypeError, ValidationError):
+            logger.warning("github pull requests response was not usable")
+            raise GitHubUnavailableError() from None
+
+    async def get_review_state(
+        self, installation_token: str, *, full_name: str, number: int
+    ) -> str:
+        """Summarise a pull request's reviews as none, commented, approved or changes_requested.
+
+        Reviews come oldest first. Each reviewer's latest approval, change request
+        or dismissal counts; anyone requesting changes outweighs approvals.
+        """
+        opinions: dict[str, str] = {}
+        any_review = False
+        for page in range(1, MAX_REVIEW_PAGES + 1):
+            response = await self._api_request(
+                "GET",
+                f"/repos/{full_name}/pulls/{number}/reviews",
+                bearer=installation_token,
+                params={"per_page": REVIEWS_PER_PAGE, "page": page},
+                repo_scoped=True,
+            )
+            try:
+                reviews = response.json()
+                for review in reviews:
+                    state = review["state"]
+                    if state == "PENDING":
+                        continue
+                    any_review = True
+                    if state in _OPINION_STATES:
+                        reviewer = (review.get("user") or {}).get("login") or f"review-{review['id']}"
+                        opinions[reviewer] = state
+            except (ValueError, KeyError, TypeError):
+                logger.warning("github reviews response was not usable")
+                raise GitHubUnavailableError() from None
+            if len(reviews) < REVIEWS_PER_PAGE:
+                break
+
+        states = set(opinions.values())
+        if "CHANGES_REQUESTED" in states:
+            return "changes_requested"
+        if "APPROVED" in states:
+            return "approved"
+        return "commented" if any_review else "none"
+
+
+def _parse_pull_request(item: dict) -> GitHubPullRequestInfo:
+    merged_at = item.get("merged_at")
+    return GitHubPullRequestInfo(
+        id=item["id"],
+        number=item["number"],
+        # The list only says open or closed; a merge date means it was merged.
+        state="merged" if merged_at else item["state"],
+        is_draft=bool(item.get("draft", False)),
+        title=item.get("title") or "",
+        author_login=(item.get("user") or {}).get("login"),
+        head_branch=(item.get("head") or {}).get("ref"),
+        created_at=item["created_at"],
+        updated_at=item["updated_at"],
+        closed_at=item.get("closed_at"),
+        merged_at=merged_at,
+    )
 
 
 def _error_message(response: httpx.Response) -> str:

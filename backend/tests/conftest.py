@@ -44,12 +44,19 @@ class RecordingDispatcher:
 
     def __init__(self) -> None:
         self.calls: list[tuple[uuid.UUID, str]] = []
+        self.pull_request_calls: list[tuple[uuid.UUID, str]] = []
         self.can_queue = True
 
     async def dispatch_repository_list(self, connection_id: uuid.UUID, trigger: str) -> bool:
         if not self.can_queue:
             return False
         self.calls.append((connection_id, trigger))
+        return True
+
+    async def dispatch_pull_requests(self, connection_id: uuid.UUID, trigger: str) -> bool:
+        if not self.can_queue:
+            return False
+        self.pull_request_calls.append((connection_id, trigger))
         return True
 
 

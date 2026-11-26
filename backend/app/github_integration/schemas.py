@@ -37,6 +37,22 @@ class GitHubRepositoryInfo(BaseModel):
     is_private: bool
 
 
+class GitHubPullRequestInfo(BaseModel):
+    """What DevPulse keeps from one entry of a repository's pull request list."""
+
+    id: int
+    number: int
+    state: Literal["open", "closed", "merged"]
+    is_draft: bool
+    title: str
+    author_login: str | None
+    head_branch: str | None
+    created_at: datetime
+    updated_at: datetime
+    closed_at: datetime | None
+    merged_at: datetime | None
+
+
 ConnectionStatus = Literal["not_connected", "active", "needs_attention"]
 
 
@@ -54,6 +70,8 @@ class ConnectionInfo(BaseModel):
     created_at: datetime
     last_checked_at: datetime | None
     repositories_synced_at: datetime | None
+    last_successful_sync_at: datetime | None = None
+    rate_limited_until: datetime | None = None
 
 
 class ConnectionStatusResponse(BaseModel):

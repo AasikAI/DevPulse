@@ -12,3 +12,7 @@ class SyncDispatcher(Protocol):
     async def dispatch_repository_list(self, connection_id: uuid.UUID, trigger: str) -> bool:
         """Queue a repository-list job. Returns False when it could not be queued."""
         ...
+
+    async def dispatch_pull_requests(self, connection_id: uuid.UUID, trigger: str) -> bool:
+        """Queue a pull request job (repository list, then pull requests). False if not queued."""
+        ...

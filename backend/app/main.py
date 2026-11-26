@@ -15,6 +15,7 @@ from app.db import get_db
 from app.github_integration.client import GitHubClient
 from app.github_integration.router import router as github_router
 from app.identity.router import router as identity_router
+from app.repositories.router import router as repositories_router
 
 settings = get_settings()
 configure_logging()
@@ -52,6 +53,7 @@ async def handle_app_error(_: Request, exc: AppError) -> JSONResponse:
 
 app.include_router(identity_router, prefix="/api")
 app.include_router(github_router, prefix="/api")
+app.include_router(repositories_router, prefix="/api")
 
 
 @app.get("/health")

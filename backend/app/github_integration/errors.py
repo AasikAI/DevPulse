@@ -53,6 +53,17 @@ PERMISSION_MISSING = "permission_missing"
 SUSPENDED = "suspended"
 
 
+class GitHubRepositoryGoneError(AppError):
+    """One repository is no longer reachable (deleted, transferred, or access removed).
+
+    Unlike `GitHubAccessError` this is about a single repository, not the whole connection.
+    """
+
+    code = "github_repository_gone"
+    message = "A repository is no longer available on GitHub."
+    status_code = 404
+
+
 class InvalidInstallStateError(AppError):
     code = "invalid_state"
     message = "That connection attempt was invalid or has already been used."

@@ -1,6 +1,6 @@
 # Plan: GitHub connection and scheduled data sync
 
-**Status:** Reviewed 2026-11-26. Slices 1 and 2 built and waiting for your review; slices 3 to 6 not started.
+**Status:** Reviewed 2026-11-26. Slices 1 to 4 built and waiting for your review; slices 5 and 6 not started.
 **Spec:** [spec.md](./spec.md)
 **Date:** 2026-11-25
 
@@ -119,13 +119,19 @@ Anything else redirects to `/connect?error=installation_not_allowed` without say
 
 ### 3.5 How the all-history fetch is split across runs
 
-**Decided (2026-11-26): REST only**, for both the repository list and pull requests. The list call `GET /repos/{owner}/{repo}/pulls?state=all` gives state, draft flag, title, author, branch and dates, 50 per page. Review state needs one extra call per pull request, `GET /repos/{owner}/{repo}/pulls/{number}/reviews`. To keep that affordable, reviews are fetched only for pull requests that are new or whose `updated_at` changed since the stored row. This makes the first fetch of a large history expensive in API calls (about one call per pull request), which is why it is split across runs and rate-limit aware.
+**Decided (2026-11-26): REST only**, for both the repository list and pull requests. The list call `GET /repos/{owner}/{repo}/pulls?state=all` gives state, draft flag, title, author, branch and dates, 50 per page. Review state needs one extra call per pull request, `GET /repos/{owner}/{repo}/pulls/{number}/reviews`.
+
+**Decided (2026-11-26): two phases, so the history import stays fast.** The widget only needs pull request counts plus review state for *open* pull requests (3.8), so reviews are not fetched page by page.
+
+- **Phase 1, import pull requests:** list pages only (50 per call). State, draft flag, title, author, branch and dates are saved with the page cursor in one transaction. `review_state` stays empty ("not loaded yet") and counts appear as soon as phase 1 has run.
+- **Phase 2, fill in review state:** a second pass over pull requests whose reviews are not loaded, or whose `updated_at` changed since they were loaded. Order: open pull requests first, then closed or merged ones, newest first. Each pull request's result is saved right after its call, so progress is kept per pull request and resumes in the next run.
+- **Budget:** phase 1 for all selected repositories gets the budget first, then phase 2 with what is left. Both stop at the same run limits (below).
 
 - **Per repository state:** `backfill_cursor` (the next page number), `backfill_started_at`, `backfill_completed_at`, `incremental_watermark`, `last_synced_at`.
-- **Backfill:** `sort=created&direction=asc`, oldest first, 50 per page. This keeps page numbers stable between runs (new PRs only append at the end). Each page is saved (upserts plus cursor) in **one transaction** after its reviews are fetched, so progress is never half-saved. If the budget runs out mid-page, at most one page of calls is repeated next run.
+- **Backfill (phase 1):** `sort=created&direction=asc`, oldest first, 50 per page. This keeps page numbers stable between runs (new PRs only append at the end).
 - **After backfill completes:** `incremental_watermark = backfill_started_at`, so PRs changed during the long backfill are caught by the next incremental pass.
-- **Incremental runs:** `sort=updated&direction=desc`, stop at the first PR older than `watermark - 5 minutes`, then set the watermark to this run's start time.
-- **Run budget:** a task stops cleanly (run status `partial`) when it has used about 8 minutes, or the `X-RateLimit-Remaining` header reports fewer than 200 requests left. The next 15-minute run continues from the saved cursor. Repositories are processed oldest-synced first, so one huge repository cannot starve the others.
+- **Incremental runs:** `sort=updated&direction=desc`, stop at the first PR older than `watermark - 5 minutes`, then set the watermark to this run's start time. Pull requests found changed go to phase 2.
+- **Run budget:** a task stops cleanly (run status `partial`) when it has used about 8 minutes, or the `X-RateLimit-Remaining` header reports fewer than 200 requests left. The next 15-minute run continues from the saved cursor. Repositories are processed oldest-synced first, so one huge repository cannot starve the others. A repository that is unselected while a run is in progress is skipped from the next page onward.
 - **Celery limits:** soft limit 540 s, hard limit 600 s.
 - **Reselecting** a repository resumes: unfinished backfill continues from its cursor, finished backfill runs an incremental pass from its old watermark (catching up on what changed meanwhile).
 
@@ -149,8 +155,8 @@ Recovery for `needs_attention` in the MVP: the user fixes it on GitHub and goes 
 ### 3.8 Widget time grouping
 
 - Weekly buckets, **UTC, Monday start** (`date_trunc('week', ...)`), default window **12 weeks** (`?weeks=` 1 to 52).
-- Per week: pull requests **opened** (by `created_at`) and **merged** (by `merged_at`).
-- Summary numbers: open now, opened in the window, merged in the window, and open PRs by review state.
+- Per week: pull requests **opened** (by `created_at`) and **merged** (by `merged_at`). Pull requests by bots are included; draft pull requests count as open.
+- Summary numbers: open now, opened in the window, merged in the window, and open PRs by review state (including "not loaded yet" while the review pass is catching up).
 - All calculated in SQL in the backend. React only draws. The widget states its scope ("N selected repositories, last 12 weeks, UTC") and uses neutral wording, with no productivity or comparison language.
 - The chart has a text alternative (a data table) for accessibility.
 
@@ -271,14 +277,40 @@ Each slice is a vertical, working step: code, tests, and migration together, the
 - Backend: list (search and pagination) and selection endpoints; ownership and availability validation; unselect keeps data. The "enqueue sync" hook is added here but the PR sync task itself lands in slice 4, so in this slice a save only persists the selection.
 - Frontend: `SelectRepositoriesPage` (loading, "still fetching repositories" with polling, empty, error, search, pending changes kept after a failed save).
 - Tests: scenarios "I choose which repositories to track" (selection part) and "I stop tracking a repository"; cross-user selection attempts rejected; unselect then reselect keeps the same row; selecting an unavailable repository rejected.
+- **Built (2026-11-26), where it differs from the text above:**
+  - No "enqueue sync" hook yet: an unused hook would be dead code, so slice 4 adds the call where it is needed (after a save that newly selects something).
+  - The install callback now redirects a healthy connection to `/repositories`; a connection that needs attention stays on `/connect`.
+  - The list shows only repositories the App can still access. `selected_count` counts selected and available ones. A repository that is hidden because it left GitHub keeps its selection and gets it back if it returns.
+  - Unselecting is always allowed (even for a repository that disappeared), so it can be dropped; selecting needs the repository to be available. Unselecting clears `selected_at`.
+  - A save is all or nothing, and a repository that is not yours looks like one that does not exist (404).
+  - Limits: 500 changes per save, page size at most 100, search text at most 100 characters.
+  - Not built (not in the plan): an "only selected" filter and language / last-updated columns from the mockup.
 
 ### Slice 4: Scheduled pull request sync (the core background job)
 
 **Result:** Saving a selection fetches pull request data right away, then every 15 minutes, with no duplicates, resumable history import, retries, and a `needs attention` stop. Visible via the database (and the existing connection status); the widget comes next.
 
+**Decisions for this slice (2026-11-26):**
+
+- **Two-phase fetch** (3.5): pull requests first, review state in a second pass, open pull requests first.
+- **Schedule covers all active connections** (not only those with a selection). Each run always refreshes the repository list so new repositories reach the selection page, and fetches pull requests only for selected repositories. Connections that need attention or are rate limited are skipped.
+- **A job skipped because another is running is retried soon:** when a job started by connecting or by saving a selection finds one already running for that connection, it re-queues itself every ~30 seconds, up to 5 times, instead of waiting for the next scheduled run. Scheduled jobs that find one running just exit.
+- **Pull requests by bots are counted** like any other. The author is stored for display only and is never used to group or filter.
+- **Draft pull requests count as open.** `is_draft` is stored.
+- Interval and run budget are settings (`SYNC_INTERVAL_SECONDS`, default 900), so the multi-run behaviour can be tried with small values.
+
 - Backend: REST pull request and review calls in `GitHubClient` (pagination, rate-limit headers), `pull_requests` module (model, upsert repository), `synchronization.service` (repository-list refresh, then PR sync with backfill and incremental per 3.5; run lock per 3.12; retry and classification per 3.7), Celery Beat schedule `dispatch_due_syncs` every 900 s (active connections with at least one selected and available repository), `sync_pull_requests` task, wire the selection save to enqueue, `sync_runs` for the PR kind, Alembic revision 3 (also adds the repository sync-state columns).
 - Infra: compose `beat` plus schedule volume.
 - Tests: scenarios "scheduled job stores PR data" and "running again creates no duplicates"; "GitHub temporarily unavailable" (earlier data kept, retry scheduled); "Access is removed on GitHub" (no retry, needs attention); partial run resumes from cursor; run budget respected; rate-limit handling; duplicate or concurrent delivery safe (second task exits); re-select resumes; due-connection selection (skips needs-attention, rate-limited, nothing selected); Celery args contain no credentials; bounded retries. PostgreSQL integration tests for the unique constraints, the upserts, and the single-running-run index.
+- **Built (2026-11-26), where it differs from the text above:**
+  - Two tasks now exist: `sync.repository_list` (used right after connecting) and `sync.pull_requests` (refreshes the repository list, then imports pull requests). Both share one run lifecycle and the one-running-job-per-connection rule. `sync.dispatch_due` is what Beat runs.
+  - A partial run (budget used up) counts as a successful update for `last_successful_sync_at`. A failed run does not.
+  - `sync_runs` did not get `repositories_total` / `repositories_completed`; "Importing history: 2 of 5" in slice 5 is derived from the repositories' own `backfill_completed_at`.
+  - New settings: `SYNC_INTERVAL_SECONDS` (900), `SYNC_RUN_BUDGET_SECONDS` (480), `SYNC_RATE_LIMIT_RESERVE` (200), `SYNC_RUN_MAX_REQUESTS` (0 = no cap).
+  - A pull request whose repository returns 404 hides just that repository (`is_available = false`); it does not mark the whole connection as needing attention.
+  - A job queued by connecting or saving a selection that finds another job running retries every 30 s up to 5 times; a scheduled job just exits.
+  - Compose gets a `beat` service with its schedule file in a named volume. **Run exactly one Beat.**
+  - Checked live against real GitHub (throwaway database, Beat on a 10-second interval): scheduled runs succeeded, 38 repositories' histories completed, review state filled in.
 
 ### Slice 5: Dashboard with the pull request widget
 

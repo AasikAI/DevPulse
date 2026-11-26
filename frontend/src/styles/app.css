@@ -355,6 +355,109 @@ a.lp-btn {
   gap: var(--space-2);
 }
 
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Inputs: white, 1px border, 3px blue focus ring (component library, mockup 01). */
+.input {
+  width: 100%;
+  min-height: 52px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  color: var(--color-ink);
+  font: inherit;
+}
+
+.input:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: 0;
+  border-color: var(--color-blue);
+}
+
+.repo-summary {
+  color: var(--color-muted);
+}
+
+.repo-summary strong {
+  color: var(--color-ink);
+}
+
+.repo-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.repo-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 52px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  cursor: pointer;
+}
+
+.repo-row:hover {
+  border-color: var(--color-accent);
+}
+
+/* The checkbox is ticked as well, so selection never relies on colour alone. */
+.repo-row-selected {
+  background: var(--color-accent-soft);
+  border-color: var(--color-accent);
+}
+
+.repo-row input {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--color-accent);
+}
+
+.repo-row:focus-within {
+  outline: var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.repo-name {
+  overflow-wrap: anywhere;
+}
+
+.badge-neutral {
+  color: var(--color-muted);
+  background: var(--color-neutral-soft);
+}
+
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  color: var(--color-muted);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
 .steps {
   list-style: none;
   margin: var(--space-4) 0;

@@ -32,6 +32,10 @@ class GithubConnection(Base):
     last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # Null until the first repository list has been fetched.
     repositories_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # The last pull request sync run that finished without failing (complete or partial).
+    last_successful_sync_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # GitHub's rate limit is used up until this moment; the schedule skips the connection.
+    rate_limited_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

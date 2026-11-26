@@ -12,6 +12,7 @@ from app.db import Base
 # Import model modules here so their tables register on Base.metadata.
 from app.github_integration import models as github_integration_models  # noqa: F401
 from app.identity import models as identity_models  # noqa: F401
+from app.pull_requests import models as pull_requests_models  # noqa: F401
 from app.repositories import models as repositories_models  # noqa: F401
 from app.synchronization import models as synchronization_models  # noqa: F401
 

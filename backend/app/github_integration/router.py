@@ -29,14 +29,18 @@ CONNECT_ERROR_CODES = {
 }
 
 
-def _connect_redirect(settings: Settings, error: str | None = None) -> RedirectResponse:
+def _redirect(settings: Settings, path: str, error: str | None = None) -> RedirectResponse:
     safe_error = None
     if error is not None:
         safe_error = error if error in CONNECT_ERROR_CODES else "failed"
     suffix = f"?error={safe_error}" if safe_error else ""
-    response = RedirectResponse(f"{settings.frontend_origin}/connect{suffix}", status_code=302)
+    response = RedirectResponse(f"{settings.frontend_origin}{path}{suffix}", status_code=302)
     response.delete_cookie(INSTALL_COOKIE, path=INSTALL_COOKIE_PATH)
     return response
+
+
+def _connect_redirect(settings: Settings, error: str | None = None) -> RedirectResponse:
+    return _redirect(settings, "/connect", error)
 
 
 @router.get("/connection", response_model=ConnectionStatusResponse)
@@ -85,7 +89,7 @@ async def finish_github_install(
     if user is None:
         return RedirectResponse(f"{settings.frontend_origin}/sign-in", status_code=302)
     try:
-        await service.complete_install(
+        connection = await service.complete_install(
             user=user,
             installation_id=installation_id,
             state=state,
@@ -101,4 +105,8 @@ async def finish_github_install(
         # generic message. The details stay in the (redacted) server log.
         logger.exception("install callback failed unexpectedly")
         return _connect_redirect(settings, "failed")
+    # A healthy connection goes straight on to choosing repositories; one that needs
+    # attention stays on the connect page, which explains what to fix.
+    if connection.status == "active":
+        return _redirect(settings, "/repositories")
     return _connect_redirect(settings)

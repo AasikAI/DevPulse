@@ -3,6 +3,9 @@
 secrets/*
 !secrets/README.md
 
+# Celery Beat's schedule file (created when running beat on your machine)
+celerybeat-schedule*
+
 # Python
 __pycache__/
 .venv/

@@ -158,7 +158,7 @@ class ConnectionService:
 
 
 class ConnectionStateService:
-    """Connection updates made by background jobs, which know only a connection ID."""
+    """Connection reads and updates for other features and background jobs."""
 
     def __init__(
         self,
@@ -173,6 +173,11 @@ class ConnectionStateService:
         connection = await self._repository.get_by_id(connection_id)
         return None if connection is None else ConnectionInfo.model_validate(connection)
 
+    async def get_for_user(self, user_id: uuid.UUID) -> ConnectionInfo | None:
+        """The user's own connection; other users' connections are never returned."""
+        connection = await self._repository.get_for_user(user_id=user_id)
+        return None if connection is None else ConnectionInfo.model_validate(connection)
+
     async def mark_needs_attention(self, connection_id: uuid.UUID, reason: str) -> None:
         await self._repository.mark_needs_attention(
             connection_id=connection_id, reason=reason, now=self._clock()
@@ -184,3 +189,17 @@ class ConnectionStateService:
             connection_id=connection_id, now=self._clock()
         )
         await self._repository.commit()
+
+    async def mark_sync_success(self, connection_id: uuid.UUID) -> None:
+        """A pull request run finished (fully or partly): record it and clear any rate-limit wait."""
+        await self._repository.mark_sync_success(connection_id=connection_id, now=self._clock())
+        await self._repository.commit()
+
+    async def mark_rate_limited(self, connection_id: uuid.UUID, until: datetime) -> None:
+        await self._repository.mark_rate_limited(
+            connection_id=connection_id, until=until, now=self._clock()
+        )
+        await self._repository.commit()
+
+    async def list_due_ids(self) -> list[uuid.UUID]:
+        return await self._repository.list_due_ids(now=self._clock())
