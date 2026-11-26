@@ -14,6 +14,7 @@ body {
 
 h1,
 h2,
+h3,
 p {
   margin: 0;
 }
@@ -21,94 +22,6 @@ p {
 :focus-visible {
   outline: var(--focus-ring);
   outline-offset: 2px;
-}
-
-.shell {
-  display: grid;
-  grid-template-columns: 240px 1fr;
-  min-height: 100vh;
-}
-
-.sidebar {
-  background: var(--color-nav);
-  color: #fff;
-  padding: var(--space-3);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-}
-
-.logo {
-  font-size: 28px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-}
-
-.nav {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.nav a {
-  display: flex;
-  align-items: center;
-  min-height: 44px;
-  padding: 0 var(--space-2);
-  border-radius: 8px;
-  color: #fff;
-  text-decoration: none;
-}
-
-.nav a[aria-current="page"] {
-  background: var(--color-accent);
-}
-
-.main {
-  display: flex;
-  flex-direction: column;
-}
-
-.topbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: var(--space-2) var(--space-4);
-  background: var(--color-surface);
-  border-bottom: 1px solid var(--color-border);
-  color: var(--color-muted);
-}
-
-.content {
-  padding: var(--space-4);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-}
-
-.page-title {
-  font-size: var(--text-page-title);
-  font-weight: 700;
-}
-
-.card {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
-  padding: var(--space-3);
-  max-width: 480px;
-}
-
-.card h2 {
-  font-size: var(--text-section);
-  margin-bottom: var(--space-2);
-}
-
-.status-row {
-  display: flex;
-  justify-content: space-between;
-  padding: var(--space-1) 0;
-  border-top: 1px solid var(--color-border);
 }
 
 .mono {
@@ -131,10 +44,15 @@ p {
 
 .badge-failure {
   color: var(--color-danger);
-  background: #fbe9eb;
+  background: var(--color-danger-soft);
+}
+
+.badge-warning {
+  color: var(--color-warning);
+  background: var(--color-warning-soft);
 }
 
 .badge-running {
   color: var(--color-blue);
-  background: #e8effb;
+  background: var(--color-blue-soft);
 }

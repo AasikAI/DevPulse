@@ -1,3 +1,6 @@
+import { Link } from "react-router-dom";
+import Logo from "./shared/components/Logo";
+
 const DEPLOY_BARS = [28, 40, 34, 52, 46, 62, 58, 48, 70, 60, 76, 66, 84, 78, 92, 86];
 
 const AUDIENCES = ["Engineering leads", "Platform teams", "Growing organisations"];
@@ -37,7 +40,7 @@ const STEPS = [
   {
     n: "03",
     title: "Find your next move",
-    body: "Get 90 days of context, then stay current with webhook updates.",
+    body: "Import your full pull request history, then stay current with updates every 15 minutes.",
   },
 ];
 
@@ -55,7 +58,7 @@ const FAQ = [
   },
   {
     q: "How far back does the first sync go?",
-    a: "Your initial sync imports 90 days of activity for the repositories you select.",
+    a: "Your first sync imports the full pull request history of the repositories you select. Very large histories can take several update cycles to finish.",
   },
   {
     q: "Can I start with just a few repositories?",
@@ -65,9 +68,9 @@ const FAQ = [
 
 function ConnectButton() {
   return (
-    <button type="button" className="lp-btn lp-btn-primary">
-      Connect GitHub →
-    </button>
+    <Link to="/sign-in" className="lp-btn lp-btn-primary">
+      Get Started →
+    </Link>
   );
 }
 
@@ -75,6 +78,9 @@ export default function Landing() {
   return (
     <div className="lp">
       <header className="lp-nav">
+        <Link to="/" className="logo-link" aria-label="DevPulse home">
+          <Logo />
+        </Link>
         <nav className="lp-nav-links" aria-label="Landing">
           <a href="#platform">Platform</a>
           <a href="#how-it-works">How it works</a>
@@ -99,16 +105,13 @@ export default function Landing() {
           </p>
           <div className="lp-actions">
             <ConnectButton />
-            <button type="button" className="lp-btn lp-btn-secondary">
-              Explore the demo
-            </button>
           </div>
           <p className="lp-fine">Read-only access · Choose your repositories · Set up in minutes</p>
         </div>
 
         <aside className="lp-preview" aria-label="Example dashboard preview">
           <div className="lp-preview-head">
-            <span>devpulse / acme-engineering</span>
+            <span>DevPulse</span>
             <span className="lp-live">● Live</span>
           </div>
           <h2 className="lp-preview-title">Delivery, without the blind spots.</h2>
@@ -210,7 +213,7 @@ export default function Landing() {
 
       <footer className="lp-footer">
         <span>
-          <strong>devpulse</strong> / Engineering intelligence
+          <strong>DevPulse</strong> / Engineering intelligence
         </span>
         <span className="lp-footer-links">
           <a href="#privacy">Privacy</a>

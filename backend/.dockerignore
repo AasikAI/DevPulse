@@ -1,0 +1,7 @@
+# backend/.env is a local virtualenv folder, not a settings file.
+.env
+.venv
+__pycache__
+*.pyc
+.pytest_cache
+tests

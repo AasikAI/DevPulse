@@ -11,8 +11,8 @@ applyTo: "backend/**/*.py"
 - Prefer small, focused functions and explicit names.
 - Use timezone-aware UTC timestamps.
 - Avoid mutable default arguments.
-- Do not suppress exceptions without logging and an approved recovery action.
-- Do not introduce a dependency when the standard library or an existing approved dependency is sufficient.
+- Do not suppress exceptions without logging and a clear recovery action.
+- Do not introduce a dependency when the standard library or an existing dependency is sufficient. A new dependency goes in the plan and needs the developer's OK.
 
 ## Feature-oriented layered structure
 
@@ -61,7 +61,7 @@ Small features may use fewer files. Do not create empty layers.
 - Use repositories for persistence operations.
 - Apply user or connection ownership filters to user-scoped queries.
 - Use stable GitHub IDs and unique constraints.
-- Implement imports with idempotent upsert behavior where approved.
+- Implement imports with idempotent upsert behavior where the feature needs it.
 - Add indexes for foreign keys, ownership filters, statuses, due schedules, and frequently filtered timestamps when justified.
 - Avoid N+1 queries.
 - Use bounded pagination for large lists.
@@ -83,7 +83,7 @@ Small features may use fewer files. Do not create empty layers.
 - Store only a secure hash of the session credential.
 - Validate session expiration and revocation for protected requests.
 - Rotate the session during login to prevent session fixation.
-- Set HTTP-only cookies and production `Secure` cookies with an approved SameSite policy.
+- Set HTTP-only cookies and production `Secure` cookies with the SameSite policy chosen in the spec or plan.
 - Never return raw session credentials in API payloads.
 
 ## GitHub integration
@@ -114,14 +114,17 @@ Small features may use fewer files. Do not create empty layers.
 - Include correlation fields such as `request_id`, `connection_id`, `sync_job_id`, `repository_id`, and `delivery_id` when applicable.
 - Redact credentials and personal data not required for diagnostics.
 - Use appropriate log levels.
-- Add metrics for API latency, GitHub failures, sync duration, task failures, and database pool health when the phase requires them.
+- Add metrics for API latency, GitHub failures, sync duration, task failures, and database pool health when the feature requires them.
 
 ## Backend testing
+
+Write tests in the same slice as the code. Strict test-first is not required.
 
 - Use Pytest.
 - Use service-unit tests with mocked repositories and integration clients.
 - Use PostgreSQL integration tests for constraints, transactions, and upserts.
 - Use FastAPI integration tests for authentication, validation, response contracts, and ownership.
-- Use GitHub fixtures or mocks. Do not call live GitHub from unit tests.
-- Include success, failure, boundary, ownership, security, idempotency, and retry tests.
+- Use GitHub fixtures or mocks. Do not call live GitHub from tests.
+- Cover the cases that matter for the slice: success, failure, boundaries, ownership, security, idempotency, and retries.
+- Use the scenarios in the feature's `spec.md` as the source for test names and cases.
 - Never use real credentials in tests.

@@ -11,7 +11,7 @@ applyTo: "frontend/**/*.{ts,tsx}"
 - Use explicit types for component props, API contracts, and state.
 - Avoid `any`; if unavoidable, document the boundary and narrow it immediately.
 - Prefer small feature-focused components over large page components.
-- Do not add a state-management library without approval.
+- Do not add a state-management library without asking first.
 
 ## Feature organization
 
@@ -46,11 +46,12 @@ Place truly shared UI components in a shared component area. Do not move feature
 - Logging out must clear local user state but must not assume the GitHub installation was removed.
 - Disconnecting GitHub must not log the user out.
 - Validate post-login redirect targets. Allow only known in-application routes; never redirect to an arbitrary or external URL (no open redirects).
-- Do not render synchronization controls or sync status until the approved phase includes them.
 
 ## User experience states
 
-Every data-driven page must support applicable states:
+Every data-driven page must have at least loading, empty, and error states, even in an MVP slice. Add the other states below when the feature has them; visual polish can wait for the UI/UX pass.
+
+States to consider:
 
 - Loading
 - Success
@@ -79,7 +80,7 @@ When synchronization fails, continue showing the latest stored data when availab
 
 ## Charts and analytics
 
-- Use Apache ECharts for approved visualizations.
+- Use Apache ECharts for charts and visualizations.
 - Read chart data from PostgreSQL-backed FastAPI endpoints.
 - Do not calculate authoritative business metrics independently in React.
 - Display the selected date and repository scope.
@@ -95,10 +96,12 @@ When synchronization fails, continue showing the latest stored data when availab
 
 ## Frontend testing
 
+Write tests in the same slice as the UI code. Strict test-first is not required.
+
 - Use Vitest and React Testing Library.
 - Test user-observable behavior rather than implementation details.
-- Cover loading, success, empty, stale, partial, and failure states.
-- Cover protected routes, profile rendering, and connection status. Cover synchronization actions only when the approved phase includes them.
+- Cover the user-visible behavior of each slice, including loading, empty, and error states. Add stale, partial, rate-limited, and permission states when the feature has them.
+- Use the scenarios in the feature's `spec.md` as the source for test names and cases.
 - Mock FastAPI at the network boundary.
-- Use Playwright for approved end-to-end journeys.
+- Use Playwright for a few key journeys.
 - Never include real credentials in test data.

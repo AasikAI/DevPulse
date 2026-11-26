@@ -1,22 +1,22 @@
+import { Navigate, Route, Routes } from "react-router-dom";
+import RequireAuth from "./features/auth/components/RequireAuth";
+import SignInPage from "./features/auth/pages/SignInPage";
+import StartPage from "./features/auth/pages/StartPage";
+import ConnectGitHubPage from "./features/connection/pages/ConnectGitHubPage";
 import Landing from "./Landing";
 import "./styles/landing.css";
+import "./styles/app.css";
 
 export default function App() {
   return (
-    <div className="shell">
-      <aside className="sidebar">
-        <div className="logo">DevPulse</div>
-        <nav className="nav" aria-label="Primary">
-          <a href="#overview" aria-current="page">
-            Overview
-          </a>
-          <a href="#cicd">CI/CD insights</a>
-          <a href="#technology">Technology insights</a>
-        </nav>
-      </aside>
-      <main className="main">
-        <Landing />
-      </main>
-    </div>
+    <Routes>
+      <Route path="/" element={<Landing />} />
+      <Route path="/sign-in" element={<SignInPage />} />
+      <Route element={<RequireAuth />}>
+        <Route path="/start" element={<StartPage />} />
+        <Route path="/connect" element={<ConnectGitHubPage />} />
+      </Route>
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
   );
 }
